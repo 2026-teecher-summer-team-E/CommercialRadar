@@ -16,11 +16,16 @@
 ```bash
 # 1) 외부 API 전부 적재 (5개 소스, 시간 소요)
 docker compose run --rm backend python -m app.cli ingest all
-# 2) (선택) 예측 결과도 포함하려면
+# 2) geometry 적재 (상권영역 셰이프파일 → commercial_district.geometry, 재투영 5181→4326)
+./scripts/load-geometry.sh
+# 3) (선택) 예측 결과도 포함하려면
 docker compose run --rm backend python -m app.cli load-predictions ml/output/predictions.csv
-# 3) 덤프 생성
+# 4) 덤프 생성
 ./scripts/dump-seed.sh          # → seed/commercialradar_seed.sql.gz
 ```
+
+> geometry는 인제스천이 안 채우므로(수동 적재 정책) `load-geometry.sh`를 1회 실행한다.
+> 이렇게 채운 뒤 시드를 뜨면 팀원은 geometry 포함본을 받으므로 셰이프파일이 따로 필요 없다.
 
 ## 시드 파일 배포
 
