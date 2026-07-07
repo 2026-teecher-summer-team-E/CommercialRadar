@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import admin, businesses, commercial, forecast, population, sales
+from app.routers import admin, businesses, commercial, forecast, interest_districts, population, sales
 
 app = FastAPI(title="CommercialRadar API", version="0.1.0")
 
@@ -18,6 +18,7 @@ app.include_router(population.router, prefix="/api")
 app.include_router(businesses.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
 app.include_router(forecast.router, prefix="/api")
+app.include_router(interest_districts.router, prefix="/api")
 app.include_router(admin.router)
 
 

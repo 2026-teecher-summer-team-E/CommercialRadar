@@ -13,6 +13,7 @@
 | `sales_service.py` | 매출 데이터 조회 (업종별·성별·연령대) |
 | `forecast_service.py` | `ml_predictions` 테이블에서 예측 결과 조회 및 타입별 파싱 |
 | `pipeline_service.py` | 공공데이터 API(SGIS, 서울 열린데이터광장) 수집 → DB upsert |
+| `interest_district_service.py` | 관심지역 등록/조회/삭제 (상권 존재 검증, 중복 검증, soft delete) |
 
 ## 패턴
 
