@@ -1,0 +1,2 @@
+class SalesService:
+    pass
