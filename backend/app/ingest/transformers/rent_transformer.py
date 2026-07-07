@@ -156,20 +156,21 @@ def match_district_ids(
 def transform_record(
     raw: dict,
     floor_type: str,
-    latest_wrttime: str,
+    min_wrttime: str,
     name_to_ids: dict[str, list[int]],
     code_to_id: dict[str, int],
 ) -> list[dict]:
     """raw row 1건 → upsert용 dict 목록 반환.
 
-    최신 분기 + 서울 말단 상권 + 임대료 항목 필터를 통과한 행만 처리한다.
-    하나의 부동산원 상권이 여러 서울 상권에 매칭되면 여러 dict를 반환한다.
-    검증 실패·필터 미통과·매칭 없음이면 빈 리스트를 반환한다.
+    백필 범위(min_wrttime 이상) + 서울 말단 상권 + 임대료 항목 필터를 통과한
+    행만 처리한다. R-ONE은 전 분기 데이터를 한 번에 반환하므로 min_wrttime로
+    필요한 기간만 남긴다. 하나의 부동산원 상권이 여러 서울 상권에 매칭되면
+    여러 dict를 반환한다. 검증 실패·필터 미통과·매칭 없음이면 빈 리스트.
 
     Args:
         raw: R-ONE API raw row dict.
         floor_type: 상가유형 ("소규모" / "중대형" / "집합").
-        latest_wrttime: 최신 기준시점 문자열 (예: "202601").
+        min_wrttime: 백필 시작 기준시점 "YYYYQQ" (이 값 이상만 처리, 예: "202101").
         name_to_ids: {district_name: [id, ...]} — load_district_name_map(db) 결과.
         code_to_id: {external_code: id} — load_trdar_map(db) 결과 (MANUAL_MAP용).
 
@@ -182,8 +183,8 @@ def transform_record(
         logger.warning("임대료 레코드 검증 실패, 스킵: %s | raw=%s", exc.errors(), raw)
         return []
 
-    # 최신 분기만 처리 (이전 분기 데이터는 스킵)
-    if parsed.wrttime_idtfr_id != latest_wrttime:
+    # 백필 시작 분기 이상만 처리 (그 이전 과거 분기는 스킵). YYYYQQ 문자열 비교.
+    if parsed.wrttime_idtfr_id < min_wrttime:
         return []
 
     # 서울 말단 상권만 처리

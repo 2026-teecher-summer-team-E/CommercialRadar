@@ -53,6 +53,9 @@ _SVC_FP_LOCAL = "SPOP_LOCAL_RESD_DONG"       # 내국인 생활인구 (총계용
 # 데이터 없는 분기(범위 밖)는 자동 스킵된다.
 BUSINESS_BACKFILL_QUARTERS = 24
 
+# rent 백필: R-ONE은 전 분기를 한 번에 반환 → 최신부터 이 개수만큼만 남긴다 (business와 정렬).
+RENT_BACKFILL_QUARTERS = 24
+
 
 def _start_run(db: Session, source: str) -> IngestionRun:
     """ingestion_run에 running 상태로 새 레코드를 생성한다."""
@@ -76,6 +79,19 @@ def _prev_quarters(latest: str, n: int) -> list[str]:
         if q == 0:
             q, year = 4, year - 1
     return out
+
+
+def _wrttime_minus_quarters(wrttime: str, n: int) -> str:
+    """R-ONE 기준시점 'YYYYQQ'에서 n분기 이전 값 반환 (2자리 분기).
+
+    예: _wrttime_minus_quarters('202601', 4) → '202501'
+    """
+    year, q = int(wrttime[:4]), int(wrttime[4:])
+    for _ in range(n):
+        q -= 1
+        if q == 0:
+            q, year = 4, year - 1
+    return f"{year}{q:02d}"
 
 
 # ──────────────────────────────────────────────────────────────────────────────
@@ -467,20 +483,22 @@ def ingest_seoul_rent(db: Session | None = None) -> IngestionRun:
         all_rows: list[dict] = []
         failed = 0
         fetched = 0
-        latest_wrttime: str | None = None
+        min_wrttime: str | None = None
 
         # 3개 상가유형 STATBL_ID를 순차 처리
         for statbl_id, floor_type in STATBL_FLOOR_TYPE.items():
             with RebClient(statbl_id) as client:
-                # 첫 번째 테이블에서 최신 분기를 탐색해 나머지 테이블에 재사용
-                if latest_wrttime is None:
+                # 첫 번째 테이블에서 최신 분기를 탐색 → 백필 시작 분기 산출, 나머지 테이블에 재사용
+                if min_wrttime is None:
                     latest_wrttime = client.find_latest_wrttime()
-                    logger.info("[%s] 최신 기준시점: %s", source, latest_wrttime)
+                    min_wrttime = _wrttime_minus_quarters(latest_wrttime, RENT_BACKFILL_QUARTERS - 1)
+                    logger.info("[%s] 최신 %s → 백필 시작 %s (%d분기)",
+                                source, latest_wrttime, min_wrttime, RENT_BACKFILL_QUARTERS)
 
                 for raw in client.iter_rows():
                     fetched += 1
                     transformed = rent_transformer.transform_record(
-                        raw, floor_type, latest_wrttime, name_to_ids, code_to_id
+                        raw, floor_type, min_wrttime, name_to_ids, code_to_id
                     )
                     if transformed:
                         all_rows.extend(transformed)
