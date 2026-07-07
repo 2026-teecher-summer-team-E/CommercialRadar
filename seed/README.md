@@ -9,7 +9,7 @@
 ```
 
 - postgres 기동 → alembic 스키마 → 공개 테이블 초기화 → 시드 복원까지 자동.
-- 선행: `seed/commercialradar_seed.sql.gz` 파일이 있어야 함 (아래 배포 참고).
+- 선행: `seed/commercialradar_seed.zip` 파일이 있어야 함 (아래 배포 참고).
 
 ## 데이터 적재한 사람 (시드 만드는 쪽)
 
@@ -21,7 +21,7 @@ docker compose run --rm backend python -m app.cli ingest all
 # 3) (선택) 예측 결과도 포함하려면
 docker compose run --rm backend python -m app.cli load-predictions ml/output/predictions.csv
 # 4) 덤프 생성
-./scripts/dump-seed.sh          # → seed/commercialradar_seed.sql.gz
+./scripts/dump-seed.sh          # → seed/commercialradar_seed.zip
 ```
 
 > geometry는 인제스천이 안 채우므로(수동 적재 정책) `load-geometry.sh`를 1회 실행한다.
@@ -29,11 +29,11 @@ docker compose run --rm backend python -m app.cli load-predictions ml/output/pre
 
 ## 시드 파일 배포
 
-`seed/commercialradar_seed.sql.gz`는 기본적으로 git 에서 제외된다(재생성 가능한 바이너리).
+`seed/commercialradar_seed.zip`는 기본적으로 git 에서 제외된다(재생성 가능한 바이너리).
 둘 중 하나로 팀원에게 전달:
 
 - **팀 드라이브 공유** (권장, 파일 클수록): 팀원이 받아 `seed/` 에 두고 `seed-db.sh` 실행.
-- **git 커밋** (작을 때 간편): `git add -f seed/commercialradar_seed.sql.gz` 로 강제 추가.
+- **git 커밋** (작을 때 간편): `git add -f seed/commercialradar_seed.zip` 로 강제 추가.
   → 이 경우 팀원은 `git pull` 후 바로 `seed-db.sh` (진짜 한 줄).
 
 ## 포함 테이블

@@ -11,10 +11,10 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-SEED="seed/commercialradar_seed.sql.gz"
+SEED="seed/commercialradar_seed.zip"
 if [ ! -f "$SEED" ]; then
   echo "❌ 시드 파일 없음: $SEED"
-  echo "   팀 드라이브/깃에서 받아 seed/ 에 두고 다시 실행하세요."
+  echo "   팀 드라이브에서 받아 seed/ 에 두고 다시 실행하세요."
   exit 1
 fi
 
@@ -36,7 +36,7 @@ TRUNCATE commercial_district, business_category, population_heatmap,
 RESTART IDENTITY CASCADE;"
 
 echo "⑤ 시드 복원..."
-gunzip -c "$SEED" | docker compose exec -T postgres \
+unzip -p "$SEED" | docker compose exec -T postgres \
   psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -q
 
 echo "✅ 적재 완료. 테이블별 행 수:"
