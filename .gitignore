@@ -46,5 +46,9 @@ ml/models/**/*.onnx
 ml/output/*.csv
 !ml/output/predictions_sample.csv
 
+# DB 시드 덤프 (재생성 가능한 바이너리 — 드라이브 공유 또는 git add -f)
+seed/*.sql.gz
+seed/*.dump
+
 # Docs (로컬 전용)
 docs/
