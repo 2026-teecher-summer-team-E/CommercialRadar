@@ -31,6 +31,12 @@ def year_quarter_to_period(yq: str) -> pd.Period:
     return pd.Period(yq.replace("-", ""), freq="Q")
 
 
+def timestamp_to_year_quarter(ts) -> str:
+    """예측 결과의 분기 시작 Timestamp → 'YYYY-QN' (ml_predictions.target_quarter)."""
+    p = pd.Period(ts, freq="Q")
+    return f"{p.year}-Q{p.quarter}"
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # 소스별 DataFrame 로딩
 # ──────────────────────────────────────────────────────────────────────────────
