@@ -26,7 +26,7 @@ from app.database import SessionLocal
 from app.ingest.clients.seoul_client import SeoulClient
 from app.ingest.clients.reb_client import RebClient, STATBL_FLOOR_TYPE
 from app.ingest.loaders import commercial_loader, population_loader, business_loader
-from app.ingest.loaders import foreign_loader, rent_loader
+from app.ingest.loaders import foreign_loader, rent_loader, population_timeseries_loader
 from app.ingest.loaders.resolver import load_trdar_map, load_adstrd_map, load_district_name_map
 from app.ingest.transformers import (
     commercial_transformer,
@@ -119,10 +119,14 @@ def ingest_seoul_commercial(db: Session | None = None) -> IngestionRun:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def ingest_seoul_population(db: Session | None = None) -> IngestionRun:
-    """길단위인구(VwsmTrdarFlpopQq) → population_heatmap 인제스천.
+    """길단위인구(VwsmTrdarFlpopQq) → population_heatmap + population_timeseries 인제스천.
 
-    최신 분기만 수신(분기 트레일링 필터 사용). TRDAR_CD → commercial_district_id
-    로 변환 후 시간대×요일 언피벗해 적재한다.
+    전체 분기를 한 번의 스캔으로 수신해 두 테이블에 동시 적재한다:
+      - population_heatmap:    최신 분기의 시간대×요일 언피벗 (대시보드 스냅샷)
+      - population_timeseries: 전체 분기의 성별·연령 marginal (딥러닝 학습용 히스토리)
+
+    최신 분기만 받던 기존 동작과 달리, 딥러닝 시계열을 위해 전체 분기를 수신한다
+    (분기 갱신은 월 1회이므로 full 스캔 비용은 허용 범위).
     seoul_commercial 선행 완료 필요 (commercial_district_id 조인).
     """
     owns_session = db is None
@@ -134,25 +138,36 @@ def ingest_seoul_population(db: Session | None = None) -> IngestionRun:
         # 상권코드 → DB id 매핑을 한 번 로드
         trdar_map = load_trdar_map(db)
 
+        # 전체 분기 수신 (히스토리 포함) — 한 번의 스캔으로 두 테이블 적재
         with SeoulClient(_SVC_POPULATION) as client:
-            # 최신 분기 탐색 (마지막 페이지에서 max STDR_YYQU_CD)
-            latest_quarter = client.find_latest_quarter()
-            logger.info("[%s] 최신 분기: %s", source, latest_quarter)
+            raws = list(client.iter_rows())
+        fetched = len(raws)
 
-            # 최신 분기만 수신 → 언피벗
-            all_rows: list[dict] = []
-            failed = 0
-            fetched = 0
-            for raw in client.iter_rows(quarter_filter=latest_quarter):
-                fetched += 1
+        # 최신 분기 결정 (heatmap 스냅샷용) — 수신 데이터에서 직접 산출
+        quarters = [r.get("STDR_YYQU_CD") for r in raws if r.get("STDR_YYQU_CD")]
+        latest_quarter = max(quarters) if quarters else None
+        logger.info("[%s] 수신 %d건, 최신 분기: %s", source, fetched, latest_quarter)
+
+        heatmap_rows: list[dict] = []
+        ts_rows: list[dict] = []
+        failed = 0
+
+        for raw in raws:
+            # 딥러닝 시계열: 전체 분기 (성별·연령 marginal)
+            ts_rows.extend(population_transformer.transform_timeseries_record(raw, trdar_map))
+
+            # 히트맵: 최신 분기만 (시간대×요일)
+            if raw.get("STDR_YYQU_CD") == latest_quarter:
                 unpivoted = population_transformer.transform_record(raw, trdar_map)
                 if unpivoted:
-                    all_rows.extend(unpivoted)
+                    heatmap_rows.extend(unpivoted)
                 else:
                     # 검증 실패 또는 상권코드 미매핑
                     failed += 1
 
-        upserted = population_loader.upsert_all(db, all_rows)
+        upserted_hm = population_loader.upsert_all(db, heatmap_rows)
+        upserted_ts = population_timeseries_loader.upsert_all(db, ts_rows)
+        upserted = upserted_hm + upserted_ts
 
         run.status = "success"
         run.fetched_count = fetched
@@ -161,8 +176,8 @@ def ingest_seoul_population(db: Session | None = None) -> IngestionRun:
         run.finished_at = func.now()
         db.commit()
         logger.info(
-            "인제스천 완료 [%s]: fetched=%d unpivoted=%d upserted=%d failed=%d",
-            source, fetched, len(all_rows), upserted, failed,
+            "인제스천 완료 [%s]: fetched=%d heatmap=%d timeseries=%d upserted=%d failed=%d",
+            source, fetched, upserted_hm, upserted_ts, upserted, failed,
         )
         return run
 

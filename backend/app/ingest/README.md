@@ -14,9 +14,17 @@
 | Job 이름 | 서비스 | 타겟 테이블 | 건수/일 | 수집 방식 |
 |---|---|---|---|---|
 | `seoul_commercial` | `TbgisTrdarRelm` | `commercial_district` | ~1,650 | 전체 (분기 없음) |
-| `seoul_population` | `VwsmTrdarFlpopQq` | `population_heatmap` | ~1,650 | 최신 분기 필터 |
+| `seoul_population` | `VwsmTrdarFlpopQq` | `population_heatmap` + `population_timeseries` | ~34,600 | **전체 분기 스캔** (아래 주석) |
 | `seoul_business`   | `VwsmTrdarSelngQq` + `VwsmTrdarStorQq` | `business_category` | ~21k + ~76k | 최신 분기 필터 |
 | `seoul_foreign`    | `SPOP_FORN_LONG_RESD_DONG` + `SPOP_FORN_TEMP_RESD_DONG` + `SPOP_LOCAL_RESD_DONG` | `foreign_population` | ~10,176×3/일 | 기준일(YYYYMMDD) 필터, 최근 14일 |
+
+> **`seoul_population` 전체 분기 스캔 이유 (딥러닝 유동인구 예측):**
+> `population_timeseries`는 분기별 성별·연령 시계열을 딥러닝 학습용으로 보존한다.
+> 따라서 최신 분기만이 아니라 **전체 분기(~34,600건)를 한 번의 스캔으로 수신**해:
+> - `population_heatmap` ← 최신 분기의 시간대×요일 (대시보드 스냅샷, 기존과 동일)
+> - `population_timeseries` ← 전체 분기의 성별·연령 marginal (총계1+성별2+연령6 = 9행/상권·분기)
+> 두 테이블을 같은 raw에서 동시 적재한다. 성별(`ML/FML_FLPOP_CO`)·연령(`AGRDE_10~60_ABOVE`)은
+> 응답에 포함돼 있으며, 국적(내국인/외국인)은 `foreign_population`에서 별도 처리한다.
 
 ## 소스 2: 한국부동산원 R-ONE 상가임대료
 
@@ -105,6 +113,7 @@ app/ingest/
 - **멱등성**: 각 테이블의 UNIQUE 제약 기준으로 upsert → 재실행에도 중복 없음.
   - `commercial_district`: `external_code` (단일 컬럼 unique index)
   - `population_heatmap`: `(commercial_district_id, dimension, slot)` → `uq_pop_heatmap_cd_dim_slot`
+  - `population_timeseries`: `(commercial_district_id, year_quarter, dimension, slot)` → `uq_pop_ts_cd_yq_dim_slot`
   - `business_category`: `(commercial_district_id, category_name, year_quarter)` → `uq_biz_cat_cd_name_yq`
   - `rent_stats`: `(commercial_district_id, year_quarter, floor_type)` → `uq_rent_cd_yq_floor`
 - **검증 우선**: transformer에서 Pydantic 검증 → 깨진 레코드는 로드 전 스킵.
@@ -153,6 +162,7 @@ CLI는 실패 시 exit code 1을 반환 → 크론이 실패를 감지/알림에
 | `business_category` | UNIQUE 제약 `uq_biz_cat_cd_name_yq` 추가 |
 | `foreign_population` | UNIQUE 제약 `uq_foreign_pop_cd_dim_slot` 추가 (`commercial_district_id`, `dimension`, `slot`) |
 | `rent_stats` | UNIQUE 제약 `uq_rent_cd_yq_floor` 추가 (`commercial_district_id`, `year_quarter`, `floor_type`) |
+| `population_timeseries` | **신규 테이블** (딥러닝 유동인구 예측용 분기 시계열). 마이그레이션 `b7e4d9f21a83` |
 
 ```bash
 docker compose exec backend alembic revision --autogenerate -m "seoul etl: add signgu/adstrd codes, unique constraints"
