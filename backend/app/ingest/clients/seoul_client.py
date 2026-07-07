@@ -97,10 +97,18 @@ class SeoulClient:
         ) from last_exc
 
     def _parse_response(self, data: dict) -> tuple[int, list[dict]]:
-        """응답 dict에서 (total_count, rows) 추출 후 결과 코드 검증."""
+        """응답 dict에서 (total_count, rows) 추출 후 결과 코드 검증.
+
+        해당 조건에 데이터가 없으면(INFO-200) 서비스 키 없이 최상위 RESULT로
+        오기도 한다. 이는 오류가 아니라 빈 결과이므로 (0, [])을 반환한다
+        (예: 분기 백필에서 데이터 범위를 벗어난 과거 분기).
+        """
         service_data = data.get(self.service, {})
-        result = service_data.get("RESULT", {})
+        # INFO-200은 최상위 RESULT로 올 수 있어 서비스 키 → 최상위 순으로 확인
+        result = service_data.get("RESULT", data.get("RESULT", {}))
         code = result.get("CODE", "")
+        if code == "INFO-200":
+            return 0, []  # 데이터 없음 → 빈 결과 (오류 아님)
         if code != "INFO-000":
             raise RuntimeError(
                 f"서울 API [{self.service}] 오류: {code} {result.get('MESSAGE')}"
