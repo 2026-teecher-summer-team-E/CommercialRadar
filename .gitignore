@@ -10,6 +10,7 @@ build/
 venv/
 env/
 .Python
+.obsidian
 
 # Environment
 .env
