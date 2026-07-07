@@ -42,5 +42,9 @@ ml/models/**/*.pt
 ml/models/**/*.h5
 ml/models/**/*.onnx
 
+# ML 예측 결과 CSV (실제 출력물은 무시, 샘플 예시는 유지)
+ml/output/*.csv
+!ml/output/predictions_sample.csv
+
 # Docs (로컬 전용)
 docs/

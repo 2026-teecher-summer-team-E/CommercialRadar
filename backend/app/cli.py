@@ -7,6 +7,9 @@
     python -m app.cli ingest seoul_foreign
     python -m app.cli ingest seoul_rent
     python -m app.cli ingest all
+
+    # ML 예측 결과 CSV → ml_predictions 적재 (로컬 학습 결과 핸드오프)
+    python -m app.cli load-predictions ml/output/predictions.csv
 """
 
 import argparse
@@ -14,6 +17,7 @@ import logging
 import sys
 
 from app.ingest.jobs import run_targets
+from app.ingest.prediction_loader import import_predictions
 
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +38,11 @@ def main(argv: list[str] | None = None) -> int:
         help="실행할 소스명(예: seoul_commercial). 생략 시 all.",
     )
 
+    load_pred = sub.add_parser(
+        "load-predictions", help="ML 예측 결과 CSV → ml_predictions 적재"
+    )
+    load_pred.add_argument("csv_path", help="예측 결과 CSV 파일 경로")
+
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
@@ -44,6 +53,15 @@ def main(argv: list[str] | None = None) -> int:
         # 하나라도 실패하면 non-zero exit → 크론이 실패를 감지/알림 가능
         failed = any("failed" in v or v == "unknown_target" for v in results.values())
         return 1 if failed else 0
+
+    if args.command == "load-predictions":
+        logger.info("예측 CSV 적재 시작: %s", args.csv_path)
+        run = import_predictions(args.csv_path)
+        logger.info(
+            "예측 CSV 적재 결과: status=%s total=%d upserted=%d failed=%d",
+            run.status, run.fetched_count, run.upserted_count, run.failed_count,
+        )
+        return 0 if run.status == "success" and run.failed_count == 0 else 1
 
     return 0
 
