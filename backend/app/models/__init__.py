@@ -1,6 +1,7 @@
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.models.foreign_population import ForeignPopulation
+from app.models.ingestion_run import IngestionRun
 from app.models.interest_district import InterestDistrict
 from app.models.ml_predictions import MlPrediction
 from app.models.population_heatmap import PopulationHeatmap
@@ -20,4 +21,5 @@ __all__ = [
     "InterestDistrict",
     "Report",
     "ReportContent",
+    "IngestionRun",
 ]

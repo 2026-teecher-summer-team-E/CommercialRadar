@@ -19,3 +19,4 @@ def get_population_by_code(db: Session = Depends(get_db)):
 @router.get("/street-population/{district_code}")
 def get_street_population(district_code: str, db: Session = Depends(get_db)):
     return {"status": "ok"}
+
