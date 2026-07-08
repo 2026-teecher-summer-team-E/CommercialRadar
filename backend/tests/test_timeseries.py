@@ -100,6 +100,9 @@ def test_sales_returns_history_and_forecast(client, db):
     assert len(body["forecast"]) == 2
     assert body["forecast"][0]["year_quarter"] == "2025-Q1"
     assert body["forecast"][0]["value"] == 1_350_000_000
+    assert body["forecast"][0]["mid"] == 1_350_000_000
+    assert body["forecast"][0]["low"] == 1_350_000_000
+    assert body["forecast"][0]["high"] == 1_350_000_000
     assert body["forecast"][0]["confidence"] == pytest.approx(0.85, abs=1e-6)
 
 
@@ -130,6 +133,9 @@ def test_survival_returns_history_and_forecast_normalized(client, db):
     # forecast
     assert len(body["forecast"]) == 1
     assert body["forecast"][0]["value"] == pytest.approx(0.957, abs=1e-6)
+    assert body["forecast"][0]["mid"] == pytest.approx(0.957, abs=1e-6)
+    assert body["forecast"][0]["low"] == pytest.approx(0.957, abs=1e-6)
+    assert body["forecast"][0]["high"] == pytest.approx(0.957, abs=1e-6)
 
 
 # ---- aggregate(category_name 미지정) ----
@@ -152,6 +158,9 @@ def test_sales_no_category_aggregates_all_categories(client, db):
     assert body["history"][0]["value"] == pytest.approx(3_000_000_000.0, abs=1)
     # forecast: __ALL__ sentinel 행
     assert body["forecast"][0]["value"] == 5_000_000_000
+    assert body["forecast"][0]["mid"] == 5_000_000_000
+    assert body["forecast"][0]["low"] == 5_000_000_000
+    assert body["forecast"][0]["high"] == 5_000_000_000
 
 
 # ---- 정렬 확인 ----
@@ -185,3 +194,63 @@ def test_empty_history_and_forecast_when_no_data(client, db):
     body = resp.json()
     assert body["history"] == []
     assert body["forecast"] == []
+
+
+# ---- 시나리오 테스트 ----
+
+def test_forecast_with_scenarios_returns_low_mid_high(client, db):
+    """scenarios 필드가 있는 예측 행 → low <= mid <= high, value == mid."""
+    district = _make_district(db, external_code="TEST-TS-SCN")
+    _add_prediction(
+        db, district.id, "2025-Q1", "sales",
+        {
+            "total_sales": 1_370_000_000,
+            "scenarios": {
+                "low": 1_250_000_000,
+                "mid": 1_370_000_000,
+                "high": 1_500_000_000,
+            },
+        },
+        category="커피-음료",
+        confidence=0.9,
+    )
+
+    resp = client.get(
+        f"/api/commercial-districts/{district.id}/timeseries",
+        params={"metric": "sales", "category_name": "커피-음료"},
+    )
+
+    assert resp.status_code == 200
+    fc = resp.json()["forecast"]
+    assert len(fc) == 1
+    item = fc[0]
+    assert item["year_quarter"] == "2025-Q1"
+    assert item["low"] == 1_250_000_000
+    assert item["mid"] == 1_370_000_000
+    assert item["high"] == 1_500_000_000
+    assert item["value"] == item["mid"]
+    assert item["low"] <= item["mid"] <= item["high"]
+    assert item["confidence"] == pytest.approx(0.9, abs=1e-6)
+
+
+def test_forecast_without_scenarios_falls_back_to_single_value(client, db):
+    """scenarios가 없는 예측 행 → low == mid == high == value (단일값 폴백)."""
+    district = _make_district(db, external_code="TEST-TS-FALLBACK")
+    _add_prediction(
+        db, district.id, "2025-Q1", "sales",
+        {"total_sales": 2_000_000_000},
+        category=AGGREGATE_CATEGORY,
+        confidence=0.75,
+    )
+
+    resp = client.get(
+        f"/api/commercial-districts/{district.id}/timeseries",
+        params={"metric": "sales"},
+    )
+
+    assert resp.status_code == 200
+    fc = resp.json()["forecast"]
+    assert len(fc) == 1
+    item = fc[0]
+    assert item["low"] == item["mid"] == item["high"] == item["value"] == 2_000_000_000
+    assert item["confidence"] == pytest.approx(0.75, abs=1e-6)

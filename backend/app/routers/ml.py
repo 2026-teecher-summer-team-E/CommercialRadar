@@ -337,14 +337,21 @@ def get_timeseries(
         .order_by(MlPrediction.target_quarter.asc())
         .all()
     )
-    forecast = [
-        {
+    forecast = []
+    for row in forecast_rows:
+        pv = row.predicted_value or {}
+        scenarios = pv.get("scenarios") or {}
+        mid = scenarios.get("mid", pv.get(predicted_key))
+        low = scenarios.get("low", mid)
+        high = scenarios.get("high", mid)
+        forecast.append({
             "year_quarter": row.target_quarter,
-            "value": (row.predicted_value or {}).get(predicted_key),
+            "value": mid,   # 하위호환: 기존 단일값 소비자를 위해 mid 유지
+            "low": low,
+            "mid": mid,
+            "high": high,
             "confidence": row.confidence,
-        }
-        for row in forecast_rows
-    ]
+        })
 
     return {
         "district_id": district_id,
