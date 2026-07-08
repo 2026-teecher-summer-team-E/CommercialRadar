@@ -12,11 +12,11 @@ def _parse_district_ids(raw: str) -> list[int]:
     parts = [p.strip() for p in raw.split(",") if p.strip()]
     try:
         ids = [int(p) for p in parts]
-    except ValueError:
+    except ValueError as exc:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="district_ids는 정수 ID를 콤마로 구분해야 합니다.",
-        )
+        ) from exc
 
     if not (2 <= len(ids) <= 5):
         raise HTTPException(
