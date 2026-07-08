@@ -1,5 +1,9 @@
 from sqlalchemy import text
 from sqlalchemy.orm import Session
+from sqlalchemy.sql import func
+
+from app.database import SessionLocal
+from app.models.ingestion_run import IngestionRun
 
 # 규칙 기반 district_score 계산 (ML 학습 없이, 이미 적재된 지표로 산정):
 #   score = 0.3 * survival_rate + 0.15 * open_rate
@@ -51,8 +55,37 @@ _COMPUTE_SCORES_SQL = text(
 
 
 class BusinessScoreService:
+    SOURCE = "category_scores"
+
     @staticmethod
-    def compute_scores(db: Session, district_id: int | None = None) -> int:
-        result = db.execute(_COMPUTE_SCORES_SQL, {"district_id": district_id})
+    def compute_scores(db: Session | None = None, district_id: int | None = None) -> IngestionRun:
+        """district_score를 규칙 기반으로 재계산한다.
+
+        db를 주입하지 않으면 자체 세션을 만든다 (BackgroundTasks에서 이렇게 호출).
+        인제스천 잡과 동일하게 ingestion_run 테이블(source='category_scores')에
+        실행 이력을 남겨, 오래 걸리는 전체 재계산의 진행 상태를 나중에 조회할 수 있게 한다.
+        """
+        owns_session = db is None
+        db = db or SessionLocal()
+        run = IngestionRun(source=BusinessScoreService.SOURCE, status="running")
+        db.add(run)
         db.commit()
-        return result.rowcount
+        db.refresh(run)
+
+        try:
+            result = db.execute(_COMPUTE_SCORES_SQL, {"district_id": district_id})
+            run.status = "success"
+            run.upserted_count = result.rowcount
+            run.finished_at = func.now()
+            db.commit()
+            return run
+        except Exception as exc:
+            db.rollback()
+            run.status = "failed"
+            run.error_message = str(exc)[:2000]
+            run.finished_at = func.now()
+            db.commit()
+            raise
+        finally:
+            if owns_session:
+                db.close()
