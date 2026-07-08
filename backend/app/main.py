@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.routers import (
     admin,
+    analysis,
     businesses,
     commercial,
     forecast,
@@ -30,6 +31,7 @@ app.include_router(population.router, prefix="/api")
 app.include_router(businesses.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
 app.include_router(forecast.router, prefix="/api")
+app.include_router(analysis.router, prefix="/api")
 app.include_router(ml.router, prefix="/api")
 app.include_router(interest_districts.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
