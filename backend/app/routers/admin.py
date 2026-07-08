@@ -39,10 +39,13 @@ def trigger_data_ingestion(
     "/category-scores",
     summary="업종별 랭킹 점수(district_score) 규칙 기반 재계산",
     description=(
-        "ML 학습 없이 이미 적재된 지표(survival_rate, open_rate, total_sales)로 "
+        "ML 학습 없이 이미 적재된 지표(survival_rate, open_rate, total_sales, 유동인구)로 "
         "business_category.district_score를 규칙 기반으로 계산해 채운다.\n\n"
-        "score = 0.4 * survival_rate + 0.2 * open_rate + 0.4 * sales_percentile "
-        "(sales_percentile은 같은 상권·분기 내 total_sales 백분위)."
+        "score = 0.3 * survival_rate + 0.15 * open_rate + 0.3 * sales_percentile "
+        "+ 0.25 * population_percentile\n"
+        "- sales_percentile: 같은 상권·분기 내 total_sales 백분위\n"
+        "- population_percentile: 같은 분기의 다른 상권들과 비교한 유동인구 백분위 "
+        "(상권+분기 단위 지표라 같은 상권 내 업종 간 순위엔 영향 없음)"
     ),
 )
 def recompute_category_scores(
