@@ -1,20 +1,39 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 
 class PopulationMetric(BaseModel):
-    total: float | None = None
-    breakdown: dict[str, dict[str, float]] | None = None
+    total: float | None = Field(None, description="해당 분기의 총 유동인구 수", examples=[1760278.0])
+    breakdown: dict[str, dict[str, float]] | None = Field(
+        None,
+        description=(
+            "breakdown 파라미터로 요청한 세부 분류별 유동인구. "
+            "키는 'age' 또는 'gender', 값은 {구간명: 인구수}."
+        ),
+        examples=[{"age": {"20대": 227986.0, "30대": 261300.0}}],
+    )
 
 
 class DistrictQuarterMetrics(BaseModel):
-    year_quarter: str
-    survival_rate: float | None = None
-    closure_rate: float | None = None
-    open_rate: float | None = None
-    population: PopulationMetric | None = None
-    sales: float | None = None
+    year_quarter: str = Field(..., description="분기 (YYYY-QN)", examples=["2023-Q1"])
+    survival_rate: float | None = Field(
+        None, description="생존율(%). 업종별 점포수 가중평균으로 상권 단위 집계", examples=[97.07]
+    )
+    closure_rate: float | None = Field(
+        None, description="폐업률(%). 업종별 점포수 가중평균으로 상권 단위 집계", examples=[2.93]
+    )
+    open_rate: float | None = Field(
+        None, description="개업률(%). 업종별 점포수 가중평균으로 상권 단위 집계", examples=[3.5]
+    )
+    population: PopulationMetric | None = Field(
+        None, description="유동인구 지표. breakdown 요청 시 연령/성별 세부 분류가 함께 반환됨"
+    )
+    sales: float | None = Field(
+        None, description="추정매출 합계(원). 업종별 매출을 합산한 상권 단위 값", examples=[4133617279]
+    )
 
 
 class DistrictTimeSeriesResponse(BaseModel):
-    district_id: int
-    data: list[DistrictQuarterMetrics]
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[2])
+    data: list[DistrictQuarterMetrics] = Field(
+        ..., description="year_quarter 오름차순으로 정렬된 분기별 지표 목록"
+    )
