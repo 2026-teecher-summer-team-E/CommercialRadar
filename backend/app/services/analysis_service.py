@@ -55,9 +55,11 @@ class AnalysisService:
                     entry["sales"] = row.sales
 
         if needs_population:
+            needed_dimensions = ["total", *breakdown]
             query = db.query(PopulationTimeseries).filter(
                 PopulationTimeseries.commercial_district_id == district_id,
                 PopulationTimeseries.is_deleted.is_(False),
+                PopulationTimeseries.dimension.in_(needed_dimensions),
             )
             query = AnalysisService._apply_quarter_range(
                 query, PopulationTimeseries.year_quarter, from_quarter, to_quarter
@@ -68,7 +70,7 @@ class AnalysisService:
                 quarter_pop = population_by_quarter.setdefault(row.year_quarter, {"total": None, "breakdown": {}})
                 if row.dimension == "total":
                     quarter_pop["total"] = row.avg_population
-                elif row.dimension in breakdown:
+                else:
                     quarter_pop["breakdown"].setdefault(row.dimension, {})[row.slot] = row.avg_population
 
             for year_quarter, pop_data in population_by_quarter.items():
