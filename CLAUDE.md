@@ -94,10 +94,22 @@ clients(HTTP만) → transformers(순수 함수, DB/네트워크 없음, Pydanti
 
 R-ONE 상권명은 fuzzy 매칭 + `rent_transformer.MANUAL_MAP`(빈 리스트 = 의도적 스킵)으로 서울 상권에 매핑한다. 같은 키로 중복되면 loader의 `_dedupe()`가 평균 처리한다.
 
+## 인증 (Clerk)
+
+- 보호가 필요한 엔드포인트는 `current_user: User = Depends(get_current_user)`(`app/core/deps.py`)로 인증한다. 팀 전체가 이 의존성으로 통일한다 — 자체 토큰 파싱을 새로 만들지 말 것.
+- prod에서는 Clerk 세션 토큰(RS256 JWT)을 JWKS(`CLERK_JWKS_URL`)로 검증한다(PyJWT `PyJWKClient`, kid별 캐싱). Clerk 세션 토큰 수명은 60초로 짧지만 프론트 `@clerk/clerk-react`의 `getToken()`이 자동 갱신하므로 정상 플로우에선 문제되지 않는다.
+- **`ENV=dev` 우회**: 루트 `.env`에 `ENV=dev`를 두면 `get_current_user`가 JWT 검증을 건너뛰고 고정 테스트 유저(`dev_user`, `is_admin=True`·`is_company=True`)를 반환한다. 토큰 없이 Swagger(`/docs`)에서 인증 엔드포인트를 테스트할 수 있고 권한 체크까지 통과한다. `.env` 변경은 컨테이너를 재시작해야 반영된다.
+- 같은 `ENV=dev` 플래그가 Clerk 웹훅(`POST /api/webhooks/clerk`)의 svix 서명 검증도 건너뛴다.
+- 우회 범위 주의: `ENV=dev`는 `get_current_user`와 웹훅 svix 서명만 건너뛴다. admin 라우터의 `X-Admin-Key` 인증은 우회하지 않는다.
+- **`ENV=dev`는 로컬 전용.** 프로덕션은 `ENV=prod`(기본값)로 둔다 — dev로 배포하면 인증이 전부 무력화된다.
+- 미등록 사용자 정책: JWT는 유효하지만 `users`에 row가 없으면 401이다(Clerk 웹훅이 user row의 단일 출처, `get_current_user`는 auto-provision 하지 않는다). 가입 직후 웹훅 반영 전 일시적 401이 날 수 있다.
+- 인증 동작 확인용 테스트 엔드포인트: `GET /api/ping/auth` — 인증 시 `{"message": "통과입니다"}` 반환.
+
 ## 현재 상태 (스캐폴딩 단계)
 
 - 라우터 다수가 스텁(`{"status": "ok"}` 반환)이고 프론트 페이지/훅도 스텁이다. commercial 라우터와 인제스천 파이프라인, ML 파이프라인이 실제 구현된 부분이다.
-- Clerk 인증 `get_current_user`는 501을 raise(미구현)하며 어떤 라우터도 아직 이를 사용하지 않는다. CORS는 `allow_origins=["*"]` (TODO).
+- `get_current_user`는 이제 Clerk JWT 검증이 구현되어 있다(위 인증 섹션 참고). 실제 라우터 보호 연결은 아직 진행 중이며, 인증 확인용 `GET /api/ping/auth`가 이 의존성을 사용한다. CORS는 `allow_origins=["*"]` (TODO).
+- Clerk 웹훅 `POST /api/webhooks/clerk`(svix 서명 검증, users 테이블 동기화)가 구현되어 있다.
 - 알려진 불일치: 프론트 `forecastApi.ts`는 `/api/forecast/survival`을 호출하지만 백엔드는 `/api/survival-forecast/{district_code}`다.
 
 ## 문서 포인터
