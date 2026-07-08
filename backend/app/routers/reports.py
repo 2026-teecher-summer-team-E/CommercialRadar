@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
+from app.models.users import User
 from app.schemas.report import ReportContentOut, ReportDetailOut
 from app.services.report_service import ReportService
 
@@ -12,7 +13,7 @@ router = APIRouter(tags=["reports"])
 def get_report(
     report_id: int,
     db: Session = Depends(get_db),
-    current_user=Depends(get_current_user),
+    current_user: User = Depends(get_current_user),
 ):
     report, content = ReportService.get_detail(db, current_user.id, report_id)
     return ReportDetailOut(
