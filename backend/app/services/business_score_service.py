@@ -10,6 +10,8 @@ from app.models.ingestion_run import IngestionRun
 #         + 0.3 * sales_percentile + 0.25 * population_percentile
 # - survival_rate/open_rate: 이미 0~100 스케일의 비율이라 그대로 사용
 # - sales_percentile: total_sales는 업종마다 절대값 편차가 커서 그대로 비교 불가.
+#   NULL(매출 데이터 없음)은 NULLS FIRST로 최하위(0 백분위) 처리 (없는 데이터를
+#   최고 매출로 오인하지 않도록).
 #   같은 (상권, 분기) 안에서의 백분위(0~100)로 정규화해 상대적 매출 성과로 반영
 # - population_percentile: population_timeseries는 업종별이 아니라 상권+분기 단위라
 #   같은 상권 내 업종 간 순위엔 영향이 없고, 같은 분기의 다른 상권들과 비교한
@@ -34,7 +36,7 @@ _COMPUTE_SCORES_SQL = text(
             + 0.15 * bc.open_rate
             + 0.3 * (COALESCE(PERCENT_RANK() OVER (
                 PARTITION BY bc.commercial_district_id, bc.year_quarter
-                ORDER BY bc.total_sales
+                ORDER BY bc.total_sales NULLS FIRST
             ), 0) * 100)
             + 0.25 * (COALESCE(dp.population_percentile, 0) * 100) AS score
         FROM business_category bc
