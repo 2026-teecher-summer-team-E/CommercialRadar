@@ -6,10 +6,13 @@ from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
 from app.models.commercial_district import CommercialDistrict
-from app.schemas.analysis import DistrictCategoryStatsResponse, DistrictTimeSeriesResponse
-from app.services.analysis_service import AnalysisService
 from app.models.rent_stats import RentStat
-from app.schemas.analysis import CommercialDistrictRentResponse
+from app.schemas.analysis import (
+    CommercialDistrictRentResponse,
+    DistrictCategoryStatsResponse,
+    DistrictTimeSeriesResponse,
+)
+from app.services.analysis_service import AnalysisService
 
 router = APIRouter(tags=["analysis"])
 
