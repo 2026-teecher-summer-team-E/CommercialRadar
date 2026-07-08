@@ -59,6 +59,9 @@ def get_sales_forecast(
             MlPrediction.category_name == target_category,
             MlPrediction.is_deleted == False,  # noqa: E712
         )
+        # target_quarter는 'YYYY-QN'(분기 1~4)이라 문자열 오름차순 = 시간순.
+        # limit(quarters)는 "가장 이른 N개 분기"를 반환하므로, 배치는 미래 분기만
+        # 적재한다는 전제다(과거 분기가 섞이면 과거가 먼저 잘려 나온다).
         .order_by(MlPrediction.target_quarter.asc())
         .limit(quarters)
         .all()
