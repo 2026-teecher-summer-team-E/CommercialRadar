@@ -6,12 +6,13 @@
 
 CSV 스키마 (헤더 필수):
     commercial_district_id, prediction_type, target_quarter,
-    predicted_value, confidence, model_version
+    category_name, predicted_value, confidence, model_version
 
+- category_name: 업종명. 빈 칸이면 '__ALL__'(전체 합산)로 저장.
 - predicted_value: JSON 문자열. 예) '{"survival_rate": 0.71}'
 - confidence, model_version: 빈 칸이면 NULL
-- 멱등 키: (commercial_district_id, prediction_type, target_quarter)
-  → uq_ml_pred_cd_type_quarter 제약으로 재실행 시 중복 없이 갱신.
+- 멱등 키: (commercial_district_id, prediction_type, target_quarter, category_name)
+  → uq_ml_pred_cd_type_quarter_category 제약으로 재실행 시 중복 없이 갱신.
 """
 
 import csv
@@ -35,6 +36,7 @@ REQUIRED_COLUMNS = {
     "commercial_district_id",
     "prediction_type",
     "target_quarter",
+    "category_name",
     "predicted_value",
     "confidence",
     "model_version",
@@ -48,6 +50,7 @@ class PredictionRowIn(BaseModel):
 
     commercial_district_id: int
     prediction_type: str
+    category_name: str = "__ALL__"
     target_quarter: str
     predicted_value: dict
     confidence: float | None = None
@@ -71,6 +74,7 @@ def _parse_row(raw: dict) -> dict:
         "commercial_district_id": int((raw.get("commercial_district_id") or "").strip()),
         "prediction_type": (raw.get("prediction_type") or "").strip(),
         "target_quarter": (raw.get("target_quarter") or "").strip(),
+        "category_name": (raw.get("category_name") or "").strip() or "__ALL__",
         "predicted_value": json.loads(raw.get("predicted_value") or ""),
         "confidence": float(conf) if conf else None,
         "model_version": model_version or None,
@@ -82,7 +86,7 @@ def _upsert_batch(db: Session, rows: list[dict]) -> int:
         return 0
     stmt = insert(MlPrediction).values([{**r, "updated_at": func.now()} for r in rows])
     stmt = stmt.on_conflict_do_update(
-        constraint="uq_ml_pred_cd_type_quarter",
+        constraint="uq_ml_pred_cd_type_quarter_category",
         set_={
             "predicted_value": stmt.excluded.predicted_value,
             "confidence": stmt.excluded.confidence,

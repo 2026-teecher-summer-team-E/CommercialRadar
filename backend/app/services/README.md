@@ -14,6 +14,7 @@
 | `forecast_service.py` | `ml_predictions` 테이블에서 예측 결과 조회 및 타입별 파싱 |
 | `analysis_service.py` | 상권 시계열(생존율·폐업률·개업률·유동인구·매출) 조회 — 업종별 business_category는 점포수 가중평균/합계로 상권 단위 집계 |
 | `pipeline_service.py` | 공공데이터 API(서울 열린데이터광장 · 한국부동산원 R-ONE) 수집 → DB upsert (구현은 `app/ingest`) |
+| `interest_district_service.py` | 관심지역 등록/조회/삭제 (상권 존재 검증, 중복 검증, soft delete) |
 
 ## 패턴
 
