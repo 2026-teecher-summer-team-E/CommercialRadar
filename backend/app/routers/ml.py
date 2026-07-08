@@ -1,7 +1,11 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
+from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.models.ml_predictions import AGGREGATE_CATEGORY, MlPrediction
 from app.schemas.ml import (
@@ -265,3 +269,88 @@ def get_population_forecast(
         model=model_version,
         forecast=forecast,
     )
+
+
+@router.get("/commercial-districts/{district_id}/timeseries")
+def get_timeseries(
+    district_id: int,
+    metric: Literal["sales", "survival"] = Query(...),
+    category_name: str | None = None,
+    db: Session = Depends(get_db),
+):
+    """과거 실적(business_category) + 예측(ml_predictions)을 한 번에 반환.
+
+    과거→예측 꺾은선 차트용. 생존율은 과거·예측 단위를 0~1 비율로 통일한다.
+    category_name 미지정 시 과거는 전 업종 집계, 예측은 __ALL__ 행을 쓴다.
+    """
+    # 1. 상권 유효성
+    exists = (
+        db.query(CommercialDistrict.id)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    # 2. 지표별 집계식·단위·예측 키
+    if metric == "sales":
+        value_expr = func.sum(BusinessCategory.total_sales)
+        unit = "won"
+        prediction_type = PREDICTION_TYPE_SALES
+        predicted_key = "total_sales"
+    else:  # survival: 0~100 백분율 → clip 후 평균 → 0~1 비율
+        clipped = func.least(func.greatest(BusinessCategory.survival_rate, 0.0), 100.0)
+        value_expr = func.avg(clipped) / 100.0
+        unit = "ratio"
+        prediction_type = PREDICTION_TYPE_SURVIVAL
+        predicted_key = "survival_rate"
+
+    # 3. 과거 실적 — 분기별 집계 (단일 업종이면 그 업종 값, 미지정이면 전 업종 집계)
+    history_q = db.query(BusinessCategory.year_quarter, value_expr).filter(
+        BusinessCategory.commercial_district_id == district_id,
+        BusinessCategory.is_deleted == False,  # noqa: E712
+    )
+    if category_name is not None:
+        history_q = history_q.filter(BusinessCategory.category_name == category_name)
+    history_q = (
+        history_q.group_by(BusinessCategory.year_quarter)
+        .order_by(BusinessCategory.year_quarter.asc())
+    )
+    history = [
+        {"year_quarter": yq, "value": float(v) if v is not None else None}
+        for yq, v in history_q.all()
+    ]
+
+    # 4. 예측 — ml_predictions (미지정 category는 __ALL__ sentinel)
+    target_category = category_name if category_name is not None else AGGREGATE_CATEGORY
+    forecast_rows = (
+        db.query(MlPrediction)
+        .filter(
+            MlPrediction.commercial_district_id == district_id,
+            MlPrediction.prediction_type == prediction_type,
+            MlPrediction.category_name == target_category,
+            MlPrediction.is_deleted == False,  # noqa: E712
+        )
+        .order_by(MlPrediction.target_quarter.asc())
+        .all()
+    )
+    forecast = [
+        {
+            "year_quarter": row.target_quarter,
+            "value": (row.predicted_value or {}).get(predicted_key),
+            "confidence": row.confidence,
+        }
+        for row in forecast_rows
+    ]
+
+    return {
+        "district_id": district_id,
+        "category_name": category_name,
+        "metric": metric,
+        "unit": unit,
+        "history": history,
+        "forecast": forecast,
+    }
