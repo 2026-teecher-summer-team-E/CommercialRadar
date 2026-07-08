@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field
 
 
 class RentStatItem(BaseModel):
-    floor_type: str = Field(..., description="층수 구분", examples=["1F"])
+    floor_type: str = Field(..., description="상가유형", examples=["소규모"])
     avg_rent_per_sqm: float | None = Field(
         default=None,
         description="권리금 포함 m²당 평균 임대료",
@@ -19,7 +19,7 @@ class CommercialDistrictRentResponse(BaseModel):
     )
     rent_stats: list[RentStatItem] = Field(
         default_factory=list,
-        description="층수별 임대료 목록",
+        description="상가유형별 임대료 목록",
     )
       
 class PopulationMetric(BaseModel):
