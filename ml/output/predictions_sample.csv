@@ -1,0 +1,5 @@
+commercial_district_id,prediction_type,target_quarter,predicted_value,confidence,model_version
+1,survival,2025-Q1,"{""survival_rate"": 0.71}",0.85,tft-v0.1
+1,survival,2025-Q2,"{""survival_rate"": 0.68}",0.78,tft-v0.1
+2,population,2025-Q1,"{""total"": 91000, ""breakdown"": {""gender"": {""남성"": 44000, ""여성"": 47000}, ""age"": {""20대"": 28000, ""30대"": 31000}}}",0.83,deepar-v0.1
+3,sales,2025-Q1,"{""total_sales"": 1650000000, ""tx_count"": 13200}",0.8,tft-v0.1

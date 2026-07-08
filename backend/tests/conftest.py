@@ -42,7 +42,7 @@ def seed_user(db_session):
 
 @pytest.fixture
 def seed_district(db_session):
-    district = CommercialDistrict(district_name="테스트상권", gu_name="강남구", dong_name="역삼동")
+    district = CommercialDistrict(external_code="TEST-0001", district_name="테스트상권", gu_name="강남구", dong_name="역삼동")
     db_session.add(district)
     db_session.commit()
     db_session.refresh(district)
