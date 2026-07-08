@@ -11,6 +11,10 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql+psycopg2://postgres:postgres@localhost:5432/commercialradar"
     CLERK_SECRET_KEY: str = ""
     CLERK_JWKS_URL: str = ""
+    # Clerk(svix) 웹훅 서명 시크릿 (whsec_...)
+    CLERK_WEBHOOK_SECRET: str = ""
+    # 실행 환경. dev면 웹훅 서명 검증을 건너뛴다(로컬 Swagger 테스트용).
+    ENV: str = "prod"
     REDIS_URL: str = "redis://localhost:6379"
     SEOUL_API_KEY: str = ""
     # 한국부동산원 R-ONE 부동산통계 서비스 인증키
