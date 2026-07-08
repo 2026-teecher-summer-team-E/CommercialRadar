@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
@@ -15,7 +17,7 @@ class DataIngestionRequest(BaseModel):
 
 
 def _require_admin_key(x_admin_key: str) -> None:
-    if x_admin_key != settings.ADMIN_KEY:
+    if not secrets.compare_digest(x_admin_key, settings.ADMIN_KEY):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid admin key")
 
 
