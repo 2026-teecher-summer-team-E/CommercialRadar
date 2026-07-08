@@ -268,20 +268,23 @@ def get_district_category_stats(
 
 
 @router.get(
-    "/commercial-districts/{district_id}/category-ranking",
+    "/commercial-districts/category-ranking",
     response_model=CategoryRankingResponse,
     summary="업종별 랭킹 조회",
     description=(
-        "특정 상권의 업종을 district_score 기준 내림차순으로 랭킹하여 반환합니다.\n\n"
-        "- `year_quarter`를 생략하면 해당 상권의 가장 최신 분기를 자동으로 선택합니다.\n"
+        "업종을 district_score 기준 내림차순으로 랭킹하여 반환합니다.\n\n"
+        "- `district_id`를 지정하면 해당 상권만, 생략하면 전체 상권을 종합한 랭킹을 반환합니다.\n"
+        "- `year_quarter`를 생략하면 가장 최신 분기를 자동으로 선택합니다.\n"
         "- 존재하지 않는 `district_id`는 404를 반환합니다."
     ),
 )
 def get_category_ranking(
-    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    district_id: int | None = Query(
+        None, description="특정 상권만 조회. 생략 시 전체 상권을 종합한 랭킹을 반환합니다.", examples=[42]
+    ),
     year_quarter: str | None = Query(
         None,
-        description="조회할 분기 (YYYY-QN 형식). 생략 시 해당 상권의 최신 분기를 자동 선택합니다.",
+        description="조회할 분기 (YYYY-QN 형식). 생략 시 최신 분기를 자동 선택합니다.",
         examples=["2024-Q4"],
     ),
     limit: int = Query(
@@ -293,7 +296,8 @@ def get_category_ranking(
     ),
     db: Session = Depends(get_db),
 ):
-    _get_existing_district_id(db, district_id)
+    if district_id is not None:
+        _get_existing_district_id(db, district_id)
     year_quarter = _validate_quarter(year_quarter, "year_quarter")
 
     return AnalysisService.get_category_ranking(

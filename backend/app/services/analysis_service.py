@@ -127,30 +127,29 @@ class AnalysisService:
     @staticmethod
     def get_category_ranking(
         db: Session,
-        district_id: int,
+        district_id: int | None,
         year_quarter: str | None,
         limit: int,
     ) -> dict:
         resolved_quarter = year_quarter
         if resolved_quarter is None:
-            resolved_quarter = (
-                db.query(func.max(BusinessCategory.year_quarter))
-                .filter(
-                    BusinessCategory.commercial_district_id == district_id,
-                    BusinessCategory.is_deleted.is_(False),
-                )
-                .scalar()
+            quarter_query = db.query(func.max(BusinessCategory.year_quarter)).filter(
+                BusinessCategory.is_deleted.is_(False)
             )
+            if district_id is not None:
+                quarter_query = quarter_query.filter(BusinessCategory.commercial_district_id == district_id)
+            resolved_quarter = quarter_query.scalar()
 
         ranking: list[dict] = []
         if resolved_quarter is not None:
+            rows_query = db.query(BusinessCategory).filter(
+                BusinessCategory.year_quarter == resolved_quarter,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            if district_id is not None:
+                rows_query = rows_query.filter(BusinessCategory.commercial_district_id == district_id)
             rows = (
-                db.query(BusinessCategory)
-                .filter(
-                    BusinessCategory.commercial_district_id == district_id,
-                    BusinessCategory.year_quarter == resolved_quarter,
-                    BusinessCategory.is_deleted.is_(False),
-                )
+                rows_query
                 .order_by(BusinessCategory.district_score.desc().nullslast(), BusinessCategory.category_name.asc())
                 .limit(limit)
                 .all()
@@ -158,19 +157,19 @@ class AnalysisService:
             ranking = [
                 {
                     "rank": i + 1,
+                    "commercial_district_id": row.commercial_district_id,
                     "category_name": row.category_name,
-                    "district_score": row.district_score,
-                    "survival_rate": row.survival_rate,
-                    "total_business": row.total_business,
+                    "district_score": round(row.district_score) if row.district_score is not None else None,
+                    "total_sales": row.total_sales,
                 }
                 for i, row in enumerate(rows)
             ]
-
         return {
             "district_id": district_id,
             "year_quarter": resolved_quarter,
             "ranking": ranking,
         }
+
 
     @staticmethod
     def _apply_quarter_range(query, year_quarter_col, from_quarter, to_quarter):
