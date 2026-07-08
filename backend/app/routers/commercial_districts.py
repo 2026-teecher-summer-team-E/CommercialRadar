@@ -13,6 +13,8 @@ router = APIRouter(tags=["commercial-districts"])
 
 MIN_RADIUS_METERS = 100
 MAX_RADIUS_METERS = 50_000
+MIN_LAT, MAX_LAT = -90, 90
+MIN_LNG, MAX_LNG = -180, 180
 
 
 def _parse_district_ids(raw: str) -> list[int]:
@@ -54,6 +56,16 @@ def get_nearby_commercial_districts(
     ),
     db: Session = Depends(get_db),
 ):
+    if not (MIN_LAT <= lat <= MAX_LAT):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"lat는 {MIN_LAT}~{MAX_LAT} 사이여야 합니다.",
+        )
+    if not (MIN_LNG <= lng <= MAX_LNG):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"lng는 {MIN_LNG}~{MAX_LNG} 사이여야 합니다.",
+        )
     if not (MIN_RADIUS_METERS <= radius <= MAX_RADIUS_METERS):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
