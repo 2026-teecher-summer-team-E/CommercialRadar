@@ -1,3 +1,15 @@
-from app.routers import admin, businesses, commercial, forecast, interest_districts, ping, population, sales, webhooks
+from app.routers import admin, analysis, businesses, commercial, forecast, interest_districts, ml, ping, population, sales, webhooks
 
-__all__ = ["commercial", "population", "businesses", "sales", "forecast", "interest_districts", "ping", "webhooks", "admin"]
+__all__ = [
+    "commercial",
+    "population",
+    "businesses",
+    "sales",
+    "forecast",
+    "analysis",
+    "ml",
+    "interest_districts",
+    "ping",
+    "webhooks",
+    "admin",
+]
