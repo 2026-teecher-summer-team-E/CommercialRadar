@@ -12,8 +12,10 @@
 ```python
 from app.core.config import settings
 print(settings.DATABASE_URL)
-print(settings.SGIS_API_KEY)
+print(settings.SEOUL_API_KEY)
 ```
+
+> `.env`는 **프로젝트 루트**에 둡니다 (docker-compose와 같은 위치).
 
 ### `deps.py` — FastAPI 의존성 (Depends)
 
@@ -37,6 +39,6 @@ def my_page(db=Depends(get_db), user=Depends(get_current_user)):
 | `CLERK_SECRET_KEY` | Clerk 시크릿 키 |
 | `CLERK_JWKS_URL` | Clerk JWT 공개키 URL |
 | `REDIS_URL` | Redis 연결 URL |
-| `SGIS_API_KEY` | 소상공인 상가정보 API 키 |
-| `SEOUL_API_KEY` | 서울 열린데이터광장 API 키 |
+| `SEOUL_API_KEY` | 서울 열린데이터광장 API 키 (상권분석 + 생활인구) |
+| `REB_API_KEY` | 한국부동산원 R-ONE 부동산통계 인증키 (임대료) |
 | `ADMIN_KEY` | 어드민 엔드포인트 인증 키 |

@@ -1,0 +1,9 @@
+# ML 학습·추론 전용 의존성 (backend와 분리 — API 컨테이너엔 설치하지 않음)
+# 설치: python -m venv .venv && source .venv/bin/activate && pip install -r ml/requirements.txt
+darts[torch]>=0.30
+lightgbm>=4.3
+pandas>=2.2
+numpy>=1.26
+sqlalchemy>=2.0
+psycopg2-binary>=2.9
+python-dotenv>=1.0

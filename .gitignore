@@ -10,6 +10,8 @@ build/
 venv/
 env/
 .Python
+.obsidian
+Datafile/
 
 # Environment
 .env
@@ -40,6 +42,16 @@ ml/models/**/*.pkl
 ml/models/**/*.pt
 ml/models/**/*.h5
 ml/models/**/*.onnx
+
+# ML 예측 결과 CSV (실제 출력물은 무시, 샘플 예시는 유지)
+ml/output/*.csv
+!ml/output/predictions_sample.csv
+
+# DB 시드 덤프 (재생성 가능한 바이너리 — 드라이브 공유)
+seed/*.zip
+seed/*.sql
+seed/*.sql.gz
+seed/*.dump
 
 # Docs (로컬 전용)
 docs/
