@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
 from sqlalchemy.orm import Session
 
@@ -10,6 +12,7 @@ router = APIRouter(tags=["analysis"])
 
 ALLOWED_METRICS = {"survival_rate", "closure_rate", "open_rate", "population", "sales"}
 ALLOWED_BREAKDOWNS = {"age", "gender"}
+QUARTER_PATTERN = re.compile(r"^\d{4}-Q[1-4]$")
 
 
 def _parse_allowed_csv(raw: str | None, allowed: set[str], param_name: str) -> list[str]:
@@ -23,6 +26,15 @@ def _parse_allowed_csv(raw: str | None, allowed: set[str], param_name: str) -> l
             detail=f"Invalid {param_name} value(s): {', '.join(invalid)}. Allowed: {', '.join(sorted(allowed))}",
         )
     return values
+
+
+def _validate_quarter(raw: str | None, param_name: str) -> str | None:
+    if raw is not None and not QUARTER_PATTERN.match(raw):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid {param_name} value: {raw}. Expected format: YYYY-QN (e.g. 2023-Q1)",
+        )
+    return raw
 
 
 @router.get(
@@ -78,6 +90,8 @@ def get_district_time_series(
 
     metrics_list = _parse_allowed_csv(metrics, ALLOWED_METRICS, "metrics") or sorted(ALLOWED_METRICS)
     breakdown_list = _parse_allowed_csv(breakdown, ALLOWED_BREAKDOWNS, "breakdown")
+    from_quarter = _validate_quarter(from_quarter, "from_quarter")
+    to_quarter = _validate_quarter(to_quarter, "to_quarter")
 
     return AnalysisService.get_time_series(
         db,
