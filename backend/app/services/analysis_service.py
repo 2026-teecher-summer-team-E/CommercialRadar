@@ -55,9 +55,11 @@ class AnalysisService:
                     entry["sales"] = row.sales
 
         if needs_population:
+            needed_dimensions = ["total", *breakdown]
             query = db.query(PopulationTimeseries).filter(
                 PopulationTimeseries.commercial_district_id == district_id,
                 PopulationTimeseries.is_deleted.is_(False),
+                PopulationTimeseries.dimension.in_(needed_dimensions),
             )
             query = AnalysisService._apply_quarter_range(
                 query, PopulationTimeseries.year_quarter, from_quarter, to_quarter
@@ -68,7 +70,7 @@ class AnalysisService:
                 quarter_pop = population_by_quarter.setdefault(row.year_quarter, {"total": None, "breakdown": {}})
                 if row.dimension == "total":
                     quarter_pop["total"] = row.avg_population
-                elif row.dimension in breakdown:
+                else:
                     quarter_pop["breakdown"].setdefault(row.dimension, {})[row.slot] = row.avg_population
 
             for year_quarter, pop_data in population_by_quarter.items():
@@ -81,6 +83,93 @@ class AnalysisService:
         return {
             "district_id": district_id,
             "data": [by_quarter[q] for q in sorted(by_quarter)],
+        }
+
+    @staticmethod
+    def get_category_stats(
+        db: Session,
+        district_id: int,
+        year_quarter: str | None,
+        category_name: str | None,
+        fields: set[str],
+    ) -> dict:
+        target_quarter = year_quarter or (
+            db.query(func.max(BusinessCategory.year_quarter))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+
+        categories: list[dict] = []
+        if target_quarter is not None:
+            query = db.query(BusinessCategory).filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == target_quarter,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            if category_name is not None:
+                query = query.filter(BusinessCategory.category_name == category_name)
+
+            rows = query.order_by(BusinessCategory.total_business.desc()).all()
+            categories = [
+                {"category_name": row.category_name, **{field: getattr(row, field) for field in fields}}
+                for row in rows
+            ]
+
+        return {
+            "district_id": district_id,
+            "year_quarter": target_quarter,
+            "categories": categories,
+        }
+
+    @staticmethod
+    def get_category_ranking(
+        db: Session,
+        district_id: int,
+        year_quarter: str | None,
+        limit: int,
+    ) -> dict:
+        resolved_quarter = year_quarter
+        if resolved_quarter is None:
+            resolved_quarter = (
+                db.query(func.max(BusinessCategory.year_quarter))
+                .filter(
+                    BusinessCategory.commercial_district_id == district_id,
+                    BusinessCategory.is_deleted.is_(False),
+                )
+                .scalar()
+            )
+
+        ranking: list[dict] = []
+        if resolved_quarter is not None:
+            rows = (
+                db.query(BusinessCategory)
+                .filter(
+                    BusinessCategory.commercial_district_id == district_id,
+                    BusinessCategory.year_quarter == resolved_quarter,
+                    BusinessCategory.is_deleted.is_(False),
+                )
+                .order_by(BusinessCategory.district_score.desc().nullslast(), BusinessCategory.category_name.asc())
+                .limit(limit)
+                .all()
+            )
+            ranking = [
+                {
+                    "rank": i + 1,
+                    "category_name": row.category_name,
+                    "district_score": row.district_score,
+                    "survival_rate": row.survival_rate,
+                    "total_business": row.total_business,
+                }
+                for i, row in enumerate(rows)
+            ]
+
+        return {
+            "district_id": district_id,
+            "year_quarter": resolved_quarter,
+            "ranking": ranking,
         }
 
     @staticmethod
