@@ -36,8 +36,13 @@ TRUNCATE commercial_district, business_category, population_heatmap,
 RESTART IDENTITY CASCADE;"
 
 echo "⑤ 시드 복원..."
-unzip -p "$SEED" | docker compose exec -T postgres \
-  psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -q
+# pg_dump 17.x 로 생성된 시드는 postgres:16 컨테이너의 psql 이 모르는 pg17 전용
+# 구문(\restrict/\unrestrict, SET transaction_timeout)을 포함한다. ON_ERROR_STOP=1
+# 이면 첫 줄(\restrict)에서 복원이 통째로 중단되므로 파이프에서 미리 걷어낸다.
+unzip -p "$SEED" \
+  | grep -avE '^\\(un)?restrict|^SET transaction_timeout' \
+  | docker compose exec -T postgres \
+    psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -q
 
 echo "✅ 적재 완료. 테이블별 행 수:"
 docker compose exec -T postgres psql -U postgres -d commercialradar -tA -c "

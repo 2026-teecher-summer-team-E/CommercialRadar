@@ -6,6 +6,7 @@ from app.routers import (
     analysis,
     businesses,
     commercial,
+    commercial_districts,
     forecast,
     interest_districts,
     ml,
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(commercial_districts.router, prefix="/api")
 app.include_router(commercial.router, prefix="/api")
 app.include_router(ping.router, prefix="/api")
 app.include_router(population.router, prefix="/api")
