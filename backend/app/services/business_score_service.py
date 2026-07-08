@@ -70,25 +70,26 @@ class BusinessScoreService:
         """
         owns_session = db is None
         db = db or SessionLocal()
-        run = IngestionRun(source=BusinessScoreService.SOURCE, status="running")
-        db.add(run)
-        db.commit()
-        db.refresh(run)
-
         try:
-            result = db.execute(_COMPUTE_SCORES_SQL, {"district_id": district_id})
-            run.status = "success"
-            run.upserted_count = result.rowcount
-            run.finished_at = func.now()
+            run = IngestionRun(source=BusinessScoreService.SOURCE, status="running")
+            db.add(run)
             db.commit()
-            return run
-        except Exception as exc:
-            db.rollback()
-            run.status = "failed"
-            run.error_message = str(exc)[:2000]
-            run.finished_at = func.now()
-            db.commit()
-            raise
+            db.refresh(run)
+
+            try:
+                result = db.execute(_COMPUTE_SCORES_SQL, {"district_id": district_id})
+                run.status = "success"
+                run.upserted_count = result.rowcount
+                run.finished_at = func.now()
+                db.commit()
+                return run
+            except Exception as exc:
+                db.rollback()
+                run.status = "failed"
+                run.error_message = str(exc)[:2000]
+                run.finished_at = func.now()
+                db.commit()
+                raise
         finally:
             if owns_session:
                 db.close()

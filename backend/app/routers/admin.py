@@ -1,10 +1,13 @@
 import secrets
 
-from fastapi import APIRouter, BackgroundTasks, Header, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Query, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.deps import get_db
 from app.ingest.jobs import run_targets
+from app.models.commercial_district import CommercialDistrict
 from app.services.business_score_service import BusinessScoreService
 
 router = APIRouter(prefix="/admin", tags=["admin"])
@@ -57,7 +60,18 @@ def recompute_category_scores(
     district_id: int | None = Query(
         None, description="특정 상권만 재계산하려면 지정. 생략 시 전체 상권 대상.", examples=[2]
     ),
+    db: Session = Depends(get_db),
 ):
     _require_admin_key(x_admin_key)
+
+    if district_id is not None:
+        district_exists = (
+            db.query(CommercialDistrict.id)
+            .filter(CommercialDistrict.id == district_id, CommercialDistrict.is_deleted.is_(False))
+            .first()
+        )
+        if not district_exists:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commercial district not found")
+
     background_tasks.add_task(BusinessScoreService.compute_scores, None, district_id)
     return {"status": "accepted", "district_id": district_id}
