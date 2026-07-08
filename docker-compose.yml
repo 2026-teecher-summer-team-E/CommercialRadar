@@ -1,6 +1,20 @@
-version: "3.9"
-
 services:
+  # 스키마 마이그레이션 전용 1회성 서비스.
+  # postgres가 준비되면 alembic upgrade head를 실행하고 종료한다.
+  # backend는 이 서비스가 성공적으로 끝난 뒤에 뜬다 → pull 후 `docker compose up`만 하면
+  # DB 스키마가 항상 최신으로 맞춰진다(비전공자 팀원도 별도 명령 불필요).
+  migrate:
+    build: ./backend
+    env_file:
+      - ./.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-commercialradar}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+    restart: "no"
+
   backend:
     build: ./backend
     ports:
@@ -13,8 +27,12 @@ services:
       - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-commercialradar}
       - REDIS_URL=redis://redis:6379
     depends_on:
-      - postgres
-      - redis
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully  # 마이그레이션이 끝나야 backend 시작
+      redis:
+        condition: service_started
     volumes:
       - ./backend:/app
 
@@ -28,6 +46,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-commercialradar}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   redis:
     image: redis:7-alpine
