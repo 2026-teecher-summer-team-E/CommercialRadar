@@ -45,3 +45,13 @@ class CommercialDistrictDetailOut(BaseModel):
     dong_name: str | None = None
     avg_population: float | None = None
     latest_stats: LatestStatsOut | None = None
+
+
+class NearbyDistrictOut(BaseModel):
+    """반경 내 상권 조회 결과 1건."""
+
+    id: int
+    district_name: str
+    type_name: str | None = None
+    gu_name: str | None = None
+    distance_meters: float
