@@ -13,7 +13,8 @@ from app.models.ingestion_run import IngestionRun
 #   NULL(매출 데이터 없음)은 NULLS FIRST로 최하위(0 백분위) 처리 (없는 데이터를
 #   최고 매출로 오인하지 않도록).
 #   같은 (상권, 분기) 안에서의 백분위(0~100)로 정규화해 상대적 매출 성과로 반영
-# - population_percentile: population_timeseries는 업종별이 아니라 상권+분기 단위라
+# - population_percentile: 같은 이유로 avg_population NULL도 NULLS FIRST로 최하위 처리.
+#   population_timeseries는 업종별이 아니라 상권+분기 단위라
 #   같은 상권 내 업종 간 순위엔 영향이 없고, 같은 분기의 다른 상권들과 비교한
 #   유동인구 순위(0~100)로 반영 — 유동인구가 많은 상권의 업종일수록 가점
 _COMPUTE_SCORES_SQL = text(
@@ -24,7 +25,7 @@ _COMPUTE_SCORES_SQL = text(
             year_quarter,
             PERCENT_RANK() OVER (
                 PARTITION BY year_quarter
-                ORDER BY avg_population
+                ORDER BY avg_population NULLS FIRST
             ) AS population_percentile
         FROM population_timeseries
         WHERE dimension = 'total' AND slot = 'total' AND is_deleted = false
