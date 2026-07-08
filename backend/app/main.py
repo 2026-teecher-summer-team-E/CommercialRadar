@@ -8,6 +8,7 @@ from app.routers import (
     commercial_districts,
     forecast,
     interest_districts,
+    ml,
     ping,
     population,
     sales,
@@ -31,6 +32,7 @@ app.include_router(population.router, prefix="/api")
 app.include_router(businesses.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
 app.include_router(forecast.router, prefix="/api")
+app.include_router(ml.router, prefix="/api")
 app.include_router(interest_districts.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
 app.include_router(admin.router)
