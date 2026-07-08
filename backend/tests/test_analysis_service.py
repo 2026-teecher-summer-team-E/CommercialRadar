@@ -90,4 +90,4 @@ def test_get_category_ranking_without_district_id_combines_all_districts(db, see
 
     assert result["district_id"] is None
     assert [item["category_name"] for item in result["ranking"]] == ["음식점", "카페"]
-    assert [item["commercial_district_id"] for item in result["ranking"]] == [other_district.id, seed_district.id]
+    assert [item["district_name"] for item in result["ranking"]] == [other_district.district_name, seed_district.district_name]

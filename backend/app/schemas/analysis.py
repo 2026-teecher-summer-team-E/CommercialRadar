@@ -84,7 +84,7 @@ class DistrictCategoryStatsResponse(BaseModel):
 
 class CategoryRankingItem(BaseModel):
     rank: int = Field(..., description="district_score 내림차순 기준 순위 (1부터 시작)", examples=[1])
-    commercial_district_id: int = Field(..., description="이 업종이 속한 상권의 PK", examples=[42])
+    district_name: str = Field(..., description="이 업종이 속한 상권의 이름", examples=["명동"])
     category_name: str | None = Field(None, description="업종명", examples=["음식점"])
     district_score: int | None = Field(
         None, description="랭킹 기준 ML 점수(소수점 반올림). 아직 계산되지 않은 업종은 null", examples=[82]

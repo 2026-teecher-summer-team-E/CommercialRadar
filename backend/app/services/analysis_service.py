@@ -2,6 +2,7 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.business_category import BusinessCategory
+from app.models.commercial_district import CommercialDistrict
 from app.models.population_timeseries import PopulationTimeseries
 
 
@@ -142,9 +143,13 @@ class AnalysisService:
 
         ranking: list[dict] = []
         if resolved_quarter is not None:
-            rows_query = db.query(BusinessCategory).filter(
-                BusinessCategory.year_quarter == resolved_quarter,
-                BusinessCategory.is_deleted.is_(False),
+            rows_query = (
+                db.query(BusinessCategory, CommercialDistrict.district_name)
+                .join(CommercialDistrict, CommercialDistrict.id == BusinessCategory.commercial_district_id)
+                .filter(
+                    BusinessCategory.year_quarter == resolved_quarter,
+                    BusinessCategory.is_deleted.is_(False),
+                )
             )
             if district_id is not None:
                 rows_query = rows_query.filter(BusinessCategory.commercial_district_id == district_id)
@@ -157,12 +162,12 @@ class AnalysisService:
             ranking = [
                 {
                     "rank": i + 1,
-                    "commercial_district_id": row.commercial_district_id,
+                    "district_name": district_name,
                     "category_name": row.category_name,
                     "district_score": round(row.district_score) if row.district_score is not None else None,
                     "total_sales": row.total_sales,
                 }
-                for i, row in enumerate(rows)
+                for i, (row, district_name) in enumerate(rows)
             ]
         return {
             "district_id": district_id,
