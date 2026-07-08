@@ -22,6 +22,7 @@ CommercialRadar는 서울 상권(약 1,650개 공식 상권)을 분석하는 웹
 docker compose up -d
 
 # 마이그레이션
+# docker compose up 시 migrate 서비스가 alembic upgrade head를 자동 실행한다(수동 실행도 가능).
 docker compose exec backend alembic upgrade head
 docker compose exec backend alembic revision --autogenerate -m "설명"
 
