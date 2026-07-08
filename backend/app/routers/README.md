@@ -14,6 +14,7 @@ API 엔드포인트(URL 경로)가 정의된 곳입니다.
 | `businesses.py` | `/api` | `GET /api/dongs`, `GET /api/businesses`, `GET /api/age`, `GET /api/comparison` |
 | `sales.py` | `/api` | `GET /api/sales/{district_code}` |
 | `forecast.py` | `/api` | `GET /api/survival-forecast/{district_code}`, `GET /api/population-forecast/{district_code}`, `GET /api/sales-forecast/{district_code}` |
+| `analysis.py` | `/api` | `GET /api/commercial-districts/{district_id}/time-series` |
 | `admin.py` | `/admin` | `POST /admin/data` — `X-Admin-Key` 헤더 인증 필요 |
 
 ## 인증이 필요한 엔드포인트
