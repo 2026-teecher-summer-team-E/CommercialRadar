@@ -1,13 +1,12 @@
 def test_create_and_list(client, seed_district):
     create_res = client.post(
         "/api/interest-districts",
-        json={"commercial_district_id": seed_district.id, "memo": "메모", "category_name": "카페"},
+        json={"commercial_district_id": seed_district.id, "memo": "메모"},
     )
     assert create_res.status_code == 201
     body = create_res.json()
     assert body["commercial_district_id"] == seed_district.id
     assert body["memo"] == "메모"
-    assert body["category_name"] == "카페"
 
     list_res = client.get("/api/interest-districts")
     assert list_res.status_code == 200

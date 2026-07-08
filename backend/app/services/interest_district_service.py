@@ -74,7 +74,6 @@ class InterestDistrictService:
             user_id=user_id,
             commercial_district_id=body.commercial_district_id,
             memo=body.memo,
-            category_name=body.category_name,
         )
         db.add(interest_district)
         db.commit()

@@ -4,7 +4,6 @@ from pydantic import BaseModel, ConfigDict
 class InterestDistrictCreate(BaseModel):
     commercial_district_id: int
     memo: str | None = None
-    category_name: str | None = None
 
 
 class InterestDistrictResponse(BaseModel):
@@ -13,4 +12,3 @@ class InterestDistrictResponse(BaseModel):
     id: int
     commercial_district_id: int
     memo: str | None = None
-    category_name: str | None = None
