@@ -13,6 +13,7 @@ Pydantic으로 작성되어 자동 유효성 검사와 Swagger 문서 생성에 
 | `population.py` | `/api/population`, `/api/street-population` | 유동인구 응답 스키마 |
 | `sales.py` | `/api/sales` | 매출 응답 스키마 |
 | `forecast.py` | `/api/*-forecast` | DL 예측 결과 응답 스키마 |
+| `analysis.py` | `/api/commercial-districts/{district_id}/time-series` | 상권 시계열 응답 스키마 |
 | `admin.py` | `/admin/data` | 어드민 요청·응답 스키마 |
 
 ## 모델 vs 스키마 차이
