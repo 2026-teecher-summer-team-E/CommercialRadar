@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
+from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
-from app.schemas.commercial import CommercialDistrictSearchOut
+from app.schemas.commercial import CommercialDistrictDetailOut, CommercialDistrictSearchOut, LatestStatsOut
 
 router = APIRouter(tags=["commercial"])
 
@@ -42,6 +43,62 @@ def list_commercial_districts(
     return {"status": "ok"}
 
 
-@router.get("/commercial-districts/{district_code}")
-def get_commercial_district(district_code: str, db: Session = Depends(get_db)):
-    return {"status": "ok"}
+@router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
+def get_commercial_district(district_id: int, db: Session = Depends(get_db)):
+    """상권 기본 정보 + business_category 최신 분기 전체 업종 집계."""
+    district = (
+        db.query(CommercialDistrict)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if district is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    latest_quarter = (
+        db.query(BusinessCategory.year_quarter)
+        .filter(
+            BusinessCategory.commercial_district_id == district_id,
+            BusinessCategory.is_deleted == False,  # noqa: E712
+        )
+        # year_quarter는 'YYYY-QN'이라 문자열 내림차순 = 최신 분기.
+        .order_by(BusinessCategory.year_quarter.desc())
+        .limit(1)
+        .scalar()
+    )
+
+    latest_stats = None
+    if latest_quarter is not None:
+        district_score, survival_rate, closure_rate, total_business = (
+            db.query(
+                func.avg(BusinessCategory.district_score),
+                func.avg(BusinessCategory.survival_rate),
+                func.avg(BusinessCategory.closure_rate),
+                func.sum(BusinessCategory.total_business),
+            )
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == latest_quarter,
+                BusinessCategory.is_deleted == False,  # noqa: E712
+            )
+            .first()
+        )
+        latest_stats = LatestStatsOut(
+            year_quarter=latest_quarter,
+            district_score=district_score,
+            survival_rate=survival_rate,
+            closure_rate=closure_rate,
+            total_business=total_business,
+        )
+
+    return CommercialDistrictDetailOut(
+        id=district.id,
+        district_name=district.district_name,
+        type_name=district.type_name,
+        gu_name=district.gu_name,
+        dong_name=district.dong_name,
+        avg_population=district.avg_population,
+        latest_stats=latest_stats,
+    )
