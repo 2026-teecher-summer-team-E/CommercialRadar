@@ -79,7 +79,7 @@ def _derive_peak(raw: dict) -> tuple[time | None, time | None]:
     모든 값이 0이거나 없는 경우 (None, None)을 반환한다.
     """
     best_field: str | None = None
-    best_amt: float = -1.0
+    best_amt: float = 0.0  # 0으로 시작 → 모든 시간대가 0이면 아무것도 선택 안 함(None, None)
     for field in _PEAK_TIMES:
         val = raw.get(field)
         if val is not None and float(val) > best_amt:
