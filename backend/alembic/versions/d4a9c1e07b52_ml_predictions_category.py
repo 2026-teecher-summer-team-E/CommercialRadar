@@ -33,6 +33,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    # 주의: 업종별(category_name) 행이 이미 적재된 뒤에는 downgrade가 실패한다.
+    # 같은 (상권, type, 분기)에 여러 업종 행이 있으면 3-컬럼 유니크 재생성이
+    # 중복으로 막힌다. 롤백하려면 먼저 업종별 행을 합쳐(또는 삭제)야 한다.
     op.drop_constraint(NEW_UQ, 'ml_predictions', type_='unique')
     op.create_unique_constraint(
         OLD_UQ, 'ml_predictions',
