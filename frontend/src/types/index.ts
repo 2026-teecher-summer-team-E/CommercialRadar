@@ -25,6 +25,9 @@ export type PredictionType = "survival" | "population" | "sales";
 export interface TimeseriesPoint {
   year_quarter: string;
   value: number | null;
+  low?: number | null;
+  mid?: number | null;
+  high?: number | null;
   confidence?: number | null;
 }
 

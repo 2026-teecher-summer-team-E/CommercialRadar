@@ -1,5 +1,7 @@
 import { BrowserRouter, Route, Routes } from "react-router-dom";
+
 import DashboardPage from "./pages/DashboardPage";
+import GangnamCafeDemoPage from "./pages/GangnamCafeDemoPage";
 import MapPage from "./pages/MapPage";
 
 function App() {
@@ -8,6 +10,7 @@ function App() {
       <Routes>
         <Route path="/" element={<MapPage />} />
         <Route path="/dashboard/:districtCode" element={<DashboardPage />} />
+        <Route path="/demo/gangnam-cafe" element={<GangnamCafeDemoPage />} />
       </Routes>
     </BrowserRouter>
   );
