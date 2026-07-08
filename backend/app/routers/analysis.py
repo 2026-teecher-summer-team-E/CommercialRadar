@@ -7,7 +7,12 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db
 from app.models.commercial_district import CommercialDistrict
 from app.models.rent_stats import RentStat
-from app.schemas.analysis import CommercialDistrictRentResponse
+from app.schemas.analysis import (
+    CommercialDistrictRentResponse,
+    DistrictCategoryStatsResponse,
+    DistrictTimeSeriesResponse,
+)
+from app.services.analysis_service import AnalysisService
 
 router = APIRouter(tags=["analysis"])
 
@@ -112,11 +117,14 @@ def get_commercial_district_rent(
         "year_quarter": selected_quarter,
         "rent_stats": rent_stats,
     }
-from app.schemas.analysis import DistrictTimeSeriesResponse
-from app.services.analysis_service import AnalysisService
+
 
 ALLOWED_METRICS = {"survival_rate", "closure_rate", "open_rate", "population", "sales"}
 ALLOWED_BREAKDOWNS = {"age", "gender"}
+ALLOWED_CATEGORY_STAT_FIELDS = {
+    "survival_rate", "closure_rate", "open_rate",
+    "total_business", "total_sales", "tx_count", "district_score",
+}
 QUARTER_PATTERN = re.compile(r"^\d{4}-Q[1-4]$")
 
 
@@ -205,4 +213,54 @@ def get_district_time_series(
         breakdown=breakdown_list,
         from_quarter=from_quarter,
         to_quarter=to_quarter,
+    )
+
+
+@router.get(
+    "/commercial-districts/{district_id}/category-stats",
+    response_model=DistrictCategoryStatsResponse,
+    response_model_exclude_unset=True,
+    summary="업종별 현황 분석",
+    description=(
+        "특정 상권의 업종별 생존율·폐업률·개업률·업소 수·매출·상권 점수를 반환합니다.\n\n"
+        "- `year_quarter` 생략 시 최신 분기를 자동 선택합니다.\n"
+        "- `category_name`으로 특정 업종만 조회할 수 있습니다.\n"
+        "- `fields`로 반환할 지표를 고를 수 있습니다(생략 시 전체).\n"
+        "- 응답은 `total_business` 내림차순으로 정렬됩니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_district_category_stats(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    year_quarter: str | None = Query(
+        None, description="조회 분기(YYYY-QN). 생략 시 최신 분기", examples=["2024-Q4"]
+    ),
+    category_name: str | None = Query(None, description="특정 업종만 필터", examples=["카페"]),
+    fields: str | None = Query(
+        None,
+        description=(
+            "콤마로 구분한 반환 필드 목록. 허용값: survival_rate, closure_rate, open_rate, "
+            "total_business, total_sales, tx_count, district_score. 생략 시 전체 필드를 반환합니다."
+        ),
+        examples=["survival_rate,closure_rate,total_business"],
+    ),
+    db: Session = Depends(get_db),
+):
+    district_exists = (
+        db.query(CommercialDistrict.id)
+        .filter(CommercialDistrict.id == district_id, CommercialDistrict.is_deleted.is_(False))
+        .first()
+    )
+    if not district_exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commercial district not found")
+
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+    fields_list = _parse_allowed_csv(fields, ALLOWED_CATEGORY_STAT_FIELDS, "fields")
+
+    return AnalysisService.get_category_stats(
+        db,
+        district_id=district_id,
+        year_quarter=year_quarter,
+        category_name=category_name,
+        fields=set(fields_list) or ALLOWED_CATEGORY_STAT_FIELDS,
     )
