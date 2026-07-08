@@ -50,6 +50,33 @@ def test_missing_required_params_returns_422(client, db):
     assert resp.status_code == 422
 
 
+def test_lat_out_of_range_returns_400(client, db):
+    for bad_lat in (90.1, -90.1):
+        resp = client.get(
+            "/api/commercial-districts/nearby",
+            params={"lat": bad_lat, "lng": BASE_LNG, "radius": 1000},
+        )
+        assert resp.status_code == 400
+
+
+def test_lng_out_of_range_returns_400(client, db):
+    for bad_lng in (180.1, -180.1):
+        resp = client.get(
+            "/api/commercial-districts/nearby",
+            params={"lat": BASE_LAT, "lng": bad_lng, "radius": 1000},
+        )
+        assert resp.status_code == 400
+
+
+def test_lat_lng_boundary_values_are_accepted(client, db):
+    for lat, lng in ((90, 0), (-90, 0), (0, 180), (0, -180)):
+        resp = client.get(
+            "/api/commercial-districts/nearby",
+            params={"lat": lat, "lng": lng, "radius": 1000},
+        )
+        assert resp.status_code == 200
+
+
 def test_radius_below_minimum_returns_400(client, db):
     resp = client.get(
         "/api/commercial-districts/nearby",
