@@ -58,3 +58,24 @@ class DistrictTimeSeriesResponse(BaseModel):
     data: list[DistrictQuarterMetrics] = Field(
         ..., description="year_quarter 오름차순으로 정렬된 분기별 지표 목록"
     )
+
+
+class CategoryStat(BaseModel):
+    category_name: str = Field(..., description="업종명", examples=["카페"])
+    survival_rate: float | None = Field(None, description="생존율(%)", examples=[85.0])
+    closure_rate: float | None = Field(None, description="폐업률(%)", examples=[8.0])
+    open_rate: float | None = Field(None, description="개업률(%)", examples=[3.5])
+    total_business: int | None = Field(None, description="업소 수", examples=[120])
+    total_sales: int | None = Field(None, description="추정매출 합계(원)", examples=[4133617279])
+    tx_count: int | None = Field(None, description="거래 건수", examples=[13200])
+    district_score: float | None = Field(None, description="상권 점수", examples=[72.4])
+
+
+class DistrictCategoryStatsResponse(BaseModel):
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    year_quarter: str | None = Field(
+        None, description="조회된 분기(YYYY-QN). 해당 상권에 데이터가 전무하면 null", examples=["2024-Q4"]
+    )
+    categories: list[CategoryStat] = Field(
+        default_factory=list, description="total_business 내림차순으로 정렬된 업종별 지표 목록"
+    )
