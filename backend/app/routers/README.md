@@ -9,7 +9,7 @@ API 엔드포인트(URL 경로)가 정의된 곳입니다.
 
 | 파일 | 경로 접두사 | 엔드포인트 |
 |------|-------------|------------|
-| `commercial.py` | `/api` | `GET /api/commercial-districts`, `GET /api/commercial-districts/{district_code}` |
+| `commercial.py` | `/api` | `GET /api/commercial-districts`, `GET /api/commercial-districts/search`, `GET /api/commercial-districts/{district_id}` |
 | `population.py` | `/api` | `GET /api/population`, `GET /api/population-by-code`, `GET /api/street-population/{district_code}` |
 | `businesses.py` | `/api` | `GET /api/dongs`, `GET /api/businesses`, `GET /api/age`, `GET /api/comparison` |
 | `sales.py` | `/api` | `GET /api/sales/{district_code}` |
