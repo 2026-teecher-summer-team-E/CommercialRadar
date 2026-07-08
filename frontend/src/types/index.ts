@@ -21,3 +21,18 @@ export interface BusinessCategory {
 }
 
 export type PredictionType = "survival" | "population" | "sales";
+
+export interface TimeseriesPoint {
+  year_quarter: string;
+  value: number | null;
+  confidence?: number | null;
+}
+
+export interface TimeseriesResponse {
+  district_id: number;
+  category_name: string | null;
+  metric: "sales" | "survival";
+  unit: "won" | "ratio";
+  history: TimeseriesPoint[];
+  forecast: TimeseriesPoint[];
+}
