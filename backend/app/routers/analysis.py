@@ -7,7 +7,13 @@ from sqlalchemy.orm import Session
 from app.core.deps import get_db
 from app.models.commercial_district import CommercialDistrict
 from app.models.rent_stats import RentStat
-from app.schemas.analysis import CommercialDistrictRentResponse
+from app.schemas.analysis import (
+    CategoryRankingResponse,
+    CommercialDistrictRentResponse,
+    DistrictCategoryStatsResponse,
+    DistrictTimeSeriesResponse,
+)
+from app.services.analysis_service import AnalysisService
 
 router = APIRouter(tags=["analysis"])
 
@@ -112,12 +118,16 @@ def get_commercial_district_rent(
         "year_quarter": selected_quarter,
         "rent_stats": rent_stats,
     }
-from app.schemas.analysis import DistrictTimeSeriesResponse
-from app.services.analysis_service import AnalysisService
+
 
 ALLOWED_METRICS = {"survival_rate", "closure_rate", "open_rate", "population", "sales"}
 ALLOWED_BREAKDOWNS = {"age", "gender"}
+ALLOWED_CATEGORY_STAT_FIELDS = {
+    "survival_rate", "closure_rate", "open_rate",
+    "total_business", "total_sales", "tx_count", "district_score",
+}
 QUARTER_PATTERN = re.compile(r"^\d{4}-Q[1-4]$")
+CATEGORY_RANKING_MAX_LIMIT = 20
 
 
 def _parse_allowed_csv(raw: str | None, allowed: set[str], param_name: str) -> list[str]:
@@ -140,6 +150,17 @@ def _validate_quarter(raw: str | None, param_name: str) -> str | None:
             detail=f"Invalid {param_name} value: {raw}. Expected format: YYYY-QN (e.g. 2023-Q1)",
         )
     return raw
+
+
+def _get_existing_district_id(db: Session, district_id: int) -> int:
+    district_exists = (
+        db.query(CommercialDistrict.id)
+        .filter(CommercialDistrict.id == district_id, CommercialDistrict.is_deleted.is_(False))
+        .first()
+    )
+    if not district_exists:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commercial district not found")
+    return district_id
 
 
 @router.get(
@@ -185,13 +206,7 @@ def get_district_time_series(
     ),
     db: Session = Depends(get_db),
 ):
-    district_exists = (
-        db.query(CommercialDistrict.id)
-        .filter(CommercialDistrict.id == district_id, CommercialDistrict.is_deleted.is_(False))
-        .first()
-    )
-    if not district_exists:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Commercial district not found")
+    _get_existing_district_id(db, district_id)
 
     metrics_list = _parse_allowed_csv(metrics, ALLOWED_METRICS, "metrics") or sorted(ALLOWED_METRICS)
     breakdown_list = _parse_allowed_csv(breakdown, ALLOWED_BREAKDOWNS, "breakdown")
@@ -205,4 +220,85 @@ def get_district_time_series(
         breakdown=breakdown_list,
         from_quarter=from_quarter,
         to_quarter=to_quarter,
+    )
+
+
+@router.get(
+    "/commercial-districts/{district_id}/category-stats",
+    response_model=DistrictCategoryStatsResponse,
+    response_model_exclude_unset=True,
+    summary="업종별 현황 분석",
+    description=(
+        "특정 상권의 업종별 생존율·폐업률·개업률·업소 수·매출·상권 점수를 반환합니다.\n\n"
+        "- `year_quarter` 생략 시 최신 분기를 자동 선택합니다.\n"
+        "- `category_name`으로 특정 업종만 조회할 수 있습니다.\n"
+        "- `fields`로 반환할 지표를 고를 수 있습니다(생략 시 전체).\n"
+        "- 응답은 `total_business` 내림차순으로 정렬됩니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_district_category_stats(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    year_quarter: str | None = Query(
+        None, description="조회 분기(YYYY-QN). 생략 시 최신 분기", examples=["2024-Q4"]
+    ),
+    category_name: str | None = Query(None, description="특정 업종만 필터", examples=["카페"]),
+    fields: str | None = Query(
+        None,
+        description=(
+            "콤마로 구분한 반환 필드 목록. 허용값: survival_rate, closure_rate, open_rate, "
+            "total_business, total_sales, tx_count, district_score. 생략 시 전체 필드를 반환합니다."
+        ),
+        examples=["survival_rate,closure_rate,total_business"],
+    ),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+    fields_list = _parse_allowed_csv(fields, ALLOWED_CATEGORY_STAT_FIELDS, "fields")
+
+    return AnalysisService.get_category_stats(
+        db,
+        district_id=district_id,
+        year_quarter=year_quarter,
+        category_name=category_name,
+        fields=set(fields_list) or ALLOWED_CATEGORY_STAT_FIELDS,
+    )
+
+
+@router.get(
+    "/commercial-districts/{district_id}/category-ranking",
+    response_model=CategoryRankingResponse,
+    summary="업종별 랭킹 조회",
+    description=(
+        "특정 상권의 업종을 district_score 기준 내림차순으로 랭킹하여 반환합니다.\n\n"
+        "- `year_quarter`를 생략하면 해당 상권의 가장 최신 분기를 자동으로 선택합니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_category_ranking(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    year_quarter: str | None = Query(
+        None,
+        description="조회할 분기 (YYYY-QN 형식). 생략 시 해당 상권의 최신 분기를 자동 선택합니다.",
+        examples=["2024-Q4"],
+    ),
+    limit: int = Query(
+        10,
+        ge=1,
+        le=CATEGORY_RANKING_MAX_LIMIT,
+        description=f"반환할 최대 업종 수 (1~{CATEGORY_RANKING_MAX_LIMIT}, 기본값 10).",
+        examples=[5],
+    ),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+
+    return AnalysisService.get_category_ranking(
+        db,
+        district_id=district_id,
+        year_quarter=year_quarter,
+        limit=limit,
     )
