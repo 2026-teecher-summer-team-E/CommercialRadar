@@ -84,6 +84,45 @@ class AnalysisService:
         }
 
     @staticmethod
+    def get_category_stats(
+        db: Session,
+        district_id: int,
+        year_quarter: str | None,
+        category_name: str | None,
+        fields: set[str],
+    ) -> dict:
+        target_quarter = year_quarter or (
+            db.query(func.max(BusinessCategory.year_quarter))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+
+        categories: list[dict] = []
+        if target_quarter is not None:
+            query = db.query(BusinessCategory).filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == target_quarter,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            if category_name is not None:
+                query = query.filter(BusinessCategory.category_name == category_name)
+
+            rows = query.order_by(BusinessCategory.total_business.desc()).all()
+            categories = [
+                {"category_name": row.category_name, **{field: getattr(row, field) for field in fields}}
+                for row in rows
+            ]
+
+        return {
+            "district_id": district_id,
+            "year_quarter": target_quarter,
+            "categories": categories,
+        }
+
+    @staticmethod
     def _apply_quarter_range(query, year_quarter_col, from_quarter, to_quarter):
         if from_quarter:
             query = query.filter(year_quarter_col >= from_quarter)
