@@ -40,12 +40,16 @@ redis_data/
 # ML 학습된 모델 바이너리
 ml/models/**/*.pkl
 ml/models/**/*.pt
+ml/models/**/*.ckpt
 ml/models/**/*.h5
 ml/models/**/*.onnx
 
 # ML 예측 결과 CSV (실제 출력물은 무시, 샘플 예시는 유지)
 ml/output/*.csv
 !ml/output/predictions_sample.csv
+
+# ML 학습/예측 로그
+ml/output/*.log
 
 # DB 시드 덤프 (재생성 가능한 바이너리 — 드라이브 공유)
 seed/*.zip
@@ -55,3 +59,5 @@ seed/*.dump
 
 # Docs (로컬 전용)
 docs/
+
+AGENTS.md

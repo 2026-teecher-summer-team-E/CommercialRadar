@@ -9,11 +9,13 @@ API 엔드포인트(URL 경로)가 정의된 곳입니다.
 
 | 파일 | 경로 접두사 | 엔드포인트 |
 |------|-------------|------------|
-| `commercial.py` | `/api` | `GET /api/commercial-districts`, `GET /api/commercial-districts/{district_code}` |
+| `commercial.py` | `/api` | `GET /api/commercial-districts`, `GET /api/commercial-districts/search`, `GET /api/commercial-districts/{district_id}` |
 | `population.py` | `/api` | `GET /api/population`, `GET /api/population-by-code`, `GET /api/street-population/{district_code}` |
 | `businesses.py` | `/api` | `GET /api/dongs`, `GET /api/businesses`, `GET /api/age`, `GET /api/comparison` |
 | `sales.py` | `/api` | `GET /api/sales/{district_code}` |
 | `forecast.py` | `/api` | `GET /api/survival-forecast/{district_code}`, `GET /api/population-forecast/{district_code}`, `GET /api/sales-forecast/{district_code}` |
+| `analysis.py` | `/api` | `GET /api/commercial-districts/{district_id}/time-series` |
+| `interest_districts.py` | `/api` | `GET /api/interest-districts`, `POST /api/interest-districts`, `DELETE /api/interest-districts/{interest_district_id}` — Clerk JWT 인증 필요 |
 | `admin.py` | `/admin` | `POST /admin/data` — `X-Admin-Key` 헤더 인증 필요 |
 
 ## 인증이 필요한 엔드포인트
