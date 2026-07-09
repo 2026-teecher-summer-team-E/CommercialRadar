@@ -1,4 +1,4 @@
-from app.routers import admin, analysis, businesses, commercial, forecast, interest_districts, ml, ping, population, reports, sales, webhooks
+from app.routers import admin, analysis, businesses, commercial, forecast, interest_districts, ml, ping, population, reports, sales, users, webhooks
 
 __all__ = [
     "commercial",
@@ -11,6 +11,7 @@ __all__ = [
     "ml",
     "interest_districts",
     "ping",
+    "users",
     "webhooks",
     "admin",
 ]
