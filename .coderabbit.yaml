@@ -1,0 +1,65 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+# CodeRabbit 설정 — 문서: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+# 이 파일은 레포 전체 PR 리뷰 동작을 정의한다. 실제 리뷰가 붙으려면
+# coderabbit.ai에서 GitHub App을 이 레포에 설치(권한 승인)해야 한다.
+
+language: "ko-KR"
+tone_instructions: >-
+  간결하고 실용적인 한국어로 리뷰한다. 사소한 스타일 지적보다 정확성·버그·보안·
+  유지보수성에 집중한다. 스캐폴딩 단계 프로젝트임을 감안해 과한 지적은 자제한다.
+early_access: false
+
+reviews:
+  profile: "chill"                 # 소규모 팀 대상: 노이즈 적은 리뷰
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  poem: false
+  collapse_walkthrough: false
+  changed_files_summary: true
+  sequence_diagrams: true
+
+  auto_review:
+    enabled: true
+    drafts: false                  # 초안 PR은 자동 리뷰 안 함
+    base_branches:
+      - "main"
+
+  # 리뷰에서 제외할 경로(노이즈·생성물)
+  path_filters:
+    - "!**/*.lock"
+    - "!**/package-lock.json"
+    - "!**/*.min.*"
+    - "!seed/**"
+    - "!**/__pycache__/**"
+    - "!frontend/dist/**"
+
+  # 경로별 리뷰 지침(프로젝트 규칙 주입)
+  path_instructions:
+    - path: "backend/**/*.py"
+      instructions: >-
+        FastAPI + SQLAlchemy 2.0 + Alembic. 커밋/PR 제목은 `PREFIX: 한국어 설명`
+        (대문자 FEAT/FIX/CHORE/DOCS). 인제스천은 clients→transformers→loaders 단방향
+        3계층이며 loader는 반드시 INSERT ... ON CONFLICT DO UPDATE 멱등 upsert를 유지한다.
+        인증은 get_current_user 의존성으로 통일한다(자체 토큰 파싱 신규 작성 금지).
+        새 기능·버그픽스는 실패 테스트 우선(TDD)을 권장한다.
+    - path: "backend/alembic/versions/*.py"
+      instructions: >-
+        마이그레이션은 upgrade/downgrade가 대칭이어야 한다. NOT NULL 컬럼 추가 시
+        server_default로 기존 행을 백필하는지, 유니크 제약 확장 시 downgrade가 기존
+        데이터로 인해 실패하지 않는지 확인한다.
+    - path: "frontend/**/*.{ts,tsx}"
+      instructions: >-
+        React 19 + TypeScript + Vite. 린터는 ESLint가 아니라 oxlint다 —
+        ESLint 전용 규칙·설정 제안은 하지 않는다.
+    - path: "ml/**/*.py"
+      instructions: >-
+        오프라인 배치(Darts/LightGBM). export.py가 만드는 CSV의 컬럼 순서와
+        sentinel 문자열("__ALL__")은 backend prediction_loader의 계약과 반드시 일치해야 한다.
+
+  tools:
+    ruff:
+      enabled: true                # 파이썬 정적 분석
+
+chat:
+  auto_reply: true
