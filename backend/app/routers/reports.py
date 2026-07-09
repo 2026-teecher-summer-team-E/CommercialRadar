@@ -81,10 +81,9 @@ def list_reports(
             Report.user_id == current_user.id,
             Report.is_deleted.is_(False),
         )
-        .order_by(Report.created_at.desc())
+        .order_by(Report.created_at.desc(), Report.id.desc())
         .offset(offset)
         .limit(limit)
-    )
 
     reports = [dict(row) for row in db.execute(stmt).mappings().all()]
 
