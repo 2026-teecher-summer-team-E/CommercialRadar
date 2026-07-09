@@ -97,7 +97,7 @@ R-ONE 상권명은 fuzzy 매칭 + `rent_transformer.MANUAL_MAP`(빈 리스트 = 
 ## 현재 상태 (스캐폴딩 단계)
 
 - 라우터 다수가 스텁(`{"status": "ok"}` 반환)이고 프론트 페이지/훅도 스텁이다. commercial 라우터와 인제스천 파이프라인, ML 파이프라인이 실제 구현된 부분이다.
-- Clerk 인증 `get_current_user`는 501을 raise(미구현)하며 어떤 라우터도 아직 이를 사용하지 않는다. CORS는 `allow_origins=["*"]` (TODO).
+- Clerk 인증 `get_current_user`는 Clerk JWT를 검증해 로그인 사용자를 반환하며, `/api/reports`가 이를 사용한다. CORS는 `allow_origins=["*"]` (TODO).
 - 알려진 불일치: 프론트 `forecastApi.ts`는 `/api/forecast/survival`을 호출하지만 백엔드는 `/api/survival-forecast/{district_code}`다.
 
 ## 문서 포인터
