@@ -128,7 +128,7 @@ def get_current_user(
     # DB에서 사용자 조회 (Clerk 웹훅이 사용자 생성의 단일 출처 — 여기서 auto-provision 하지 않음)
     user = (
         db.query(User)
-        .filter(User.clerk_user_id == clerk_user_id, User.is_deleted == False)
+        .filter(User.clerk_user_id == clerk_user_id, User.is_deleted.is_(False))
         .first()
     )
     if user is None:
