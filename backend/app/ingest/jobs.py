@@ -25,6 +25,9 @@ from sqlalchemy.sql import func
 from app.database import SessionLocal
 from app.ingest.clients.seoul_client import SeoulClient
 from app.ingest.clients.reb_client import RebClient, STATBL_FLOOR_TYPE
+from app.ingest.clients.naver_datalab_client import fetch_buzz
+from app.ingest.transformers.buzz_transformer import transform_datalab_response
+from app.ingest.loaders.buzz_loader import upsert_all as upsert_buzz
 from app.ingest.loaders import commercial_loader, population_loader, business_loader
 from app.ingest.loaders import foreign_loader, rent_loader, population_timeseries_loader
 from app.ingest.loaders.resolver import load_trdar_map, load_adstrd_map, load_district_name_map
@@ -533,6 +536,47 @@ def ingest_seoul_rent(db: Session | None = None) -> IngestionRun:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Job 6: 네이버 데이터랩 buzz_stats
+# ──────────────────────────────────────────────────────────────────────────────
+
+def ingest_buzz(db: Session | None = None) -> IngestionRun:
+    """네이버 데이터랩 검색어 트렌드 → buzz_stats 적재 (3개 상권 1회 호출)."""
+    owns_session = db is None
+    db = db or SessionLocal()
+    source = "buzz"
+    run = _start_run(db, source)
+
+    try:
+        response = fetch_buzz()
+        rows = transform_datalab_response(response)
+        upserted = upsert_buzz(db, rows)
+
+        run.status = "success"
+        run.fetched_count = len(rows)
+        run.upserted_count = upserted
+        run.failed_count = 0
+        run.finished_at = func.now()
+        db.commit()
+        logger.info(
+            "인제스천 완료 [%s]: fetched=%d upserted=%d",
+            source, len(rows), upserted,
+        )
+        return run
+
+    except Exception as exc:
+        db.rollback()
+        run.status = "failed"
+        run.error_message = str(exc)[:2000]
+        run.finished_at = func.now()
+        db.commit()
+        logger.exception("인제스천 실패 [%s]", source)
+        raise
+    finally:
+        if owns_session:
+            db.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 디스패치 테이블
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -544,6 +588,7 @@ JOBS = {
     "seoul_business":   ingest_seoul_business,
     "seoul_foreign":    ingest_seoul_foreign,   # commercial_district.adstrd_code 선행 필요
     "seoul_rent":       ingest_seoul_rent,      # commercial_district.district_name 이름매칭 선행 필요
+    "buzz":             ingest_buzz,
 }
 
 
