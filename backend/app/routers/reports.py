@@ -15,7 +15,7 @@ from app.core.deps import get_current_user, get_db
 from app.models.report_content import ReportContent
 from app.models.reports import Report
 from app.models.users import User
-from app.schemas.report import ReportContentOut, ReportDetailOut
+from app.schemas.report import ReportContentOut, ReportCreate, ReportCreateOut, ReportDetailOut
 from app.schemas.reports import (
     ReportListResponse,
     ReportShareResponse,
@@ -388,3 +388,12 @@ def get_report(
         created_at=report.created_at,
         content=ReportContentOut.model_validate(content),
     )
+
+
+@router.post("/reports", response_model=ReportCreateOut, status_code=status.HTTP_201_CREATED)
+def create_report(
+    body: ReportCreate,
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    return ReportService.create(db, current_user.id, body)
