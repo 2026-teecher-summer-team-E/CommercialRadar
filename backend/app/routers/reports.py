@@ -30,11 +30,13 @@ def _format_value(value) -> str:
         return "-"
     return str(value)
 
-
-def _draw_key_value(pdf: canvas.Canvas, x: float, y: float, label: str, value) -> float:
-    """한 줄짜리 라벨/값을 그리고 다음 줄 y 좌표를 반환합니다."""
+def _draw_key_value(pdf: canvas.Canvas, x: float, y: float, label: str, value, max_chars: int = 40) -> float:
+    """라벨/값을 그리고 다음 줄 y 좌표를 반환합니다. 값이 길면 잘라서 표시합니다."""
     pdf.setFont(KOREAN_FONT, 10)
-    pdf.drawString(x, y, f"{label}: {_format_value(value)}")
+    text = f"{label}: {_format_value(value)}"
+    if len(text) > max_chars:
+        text = text[: max_chars - 1] + "…"
+    pdf.drawString(x, y, text)
     return y - 8 * mm
 
 
