@@ -1,0 +1,1437 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=1400">
+<title>상권레이더 — 역삼동 상권 프로필 v3</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: system-ui, 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
+    background: #EEF1F8;
+    min-width: 1200px;
+    color: #1F2A44;
+    font-size: 13px;
+  }
+
+  /* ── TopBar ── */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 56px;
+    padding: 0 24px;
+    background: #fff;
+    border-bottom: 1px solid #E4E9F2;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .logo {
+    display: flex;
+    align-items: baseline;
+    gap: 1px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+  }
+  .logo span:first-child { color: #1D4FD8; }
+  .logo span:last-child  { color: #1F2A44; }
+
+  .nav-pills {
+    display: flex;
+    gap: 4px;
+    background: #F4F6FB;
+    border-radius: 20px;
+    padding: 4px;
+  }
+  .nav-pill {
+    padding: 6px 16px;
+    border-radius: 16px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #8A94A6;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .nav-pill.active {
+    background: #fff;
+    color: #1D4FD8;
+    font-weight: 600;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+  }
+
+  .cta-btn {
+    background: #1D4FD8;
+    color: #fff;
+    border: none;
+    border-radius: 18px;
+    padding: 8px 20px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+
+  /* ── Main layout ── */
+  .main {
+    display: flex;
+    padding: 16px;
+    gap: 12px;
+    max-width: 1360px;
+    margin: 0 auto;
+  }
+
+  /* ── Icon Rail ── */
+  .icon-rail {
+    width: 56px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    padding-top: 8px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 72px;
+    align-self: flex-start;
+    height: calc(100vh - 88px);
+  }
+  .rail-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #8A94A6;
+    cursor: pointer;
+  }
+  .rail-icon.active {
+    background: #EBF0FD;
+    color: #1D4FD8;
+  }
+  .rail-spacer { flex: 1; }
+  .rail-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #1D4FD8;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+    font-size: 14px;
+    margin-bottom: 8px;
+  }
+
+  /* ── Left Anchor Column ── */
+  .col-left {
+    width: 480px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    position: sticky;
+    top: 72px;
+    align-self: flex-start;
+    max-height: calc(100vh - 88px);
+  }
+
+  /* ── Card base ── */
+  .card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 2px 8px rgba(30,50,100,0.07);
+    padding: 20px;
+    position: relative;
+  }
+  .card-title {
+    font-size: 12px;
+    font-weight: 600;
+    color: #8A94A6;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+  }
+
+  /* ── Hero card ── */
+  .card-hero {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  .hero-top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .hero-score-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: #8A94A6;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+  }
+  .hero-actions {
+    display: flex;
+    gap: 6px;
+  }
+  .hero-action-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+    background: #F4F6FB;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    color: #8A94A6;
+    cursor: pointer;
+  }
+
+  .score-number-row {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .score-number {
+    font-size: 52px;
+    font-weight: 800;
+    color: #1D4FD8;
+    line-height: 1;
+  }
+  .score-denom {
+    font-size: 18px;
+    color: #8A94A6;
+    font-weight: 500;
+  }
+  .score-rank {
+    font-size: 13px;
+    color: #1D4FD8;
+    font-weight: 700;
+    background: #EBF0FD;
+    border-radius: 20px;
+    padding: 3px 10px;
+    margin-left: 4px;
+  }
+
+  .score-breakdown-label {
+    font-size: 11px;
+    color: #8A94A6;
+    margin-top: 10px;
+  }
+  .score-breakdown {
+    display: flex;
+    gap: 4px;
+    margin-top: 5px;
+  }
+  .breakdown-chip {
+    border-radius: 6px;
+    padding: 4px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .breakdown-chip.survival  { background: #1D4FD8; color: #fff; }
+  .breakdown-chip.population { background: #4F7BE8; color: #fff; }
+  .breakdown-chip.sales     { background: #B8CCEB; color: #1F2A44; }
+
+  .hero-district-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-top: 14px;
+  }
+  .district-badge {
+    width: 110px;
+    height: 110px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1D4FD8 0%, #2659D9 60%, #4F7BE8 100%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    box-shadow: 0 8px 24px rgba(29,79,216,0.35);
+    flex-shrink: 0;
+  }
+  .district-name {
+    font-size: 28px;
+    font-weight: 800;
+    line-height: 1.1;
+  }
+  .district-sub {
+    font-size: 10px;
+    font-weight: 500;
+    opacity: 0.85;
+    margin-top: 2px;
+  }
+  .district-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .district-info .name  { font-size: 15px; font-weight: 700; color: #1F2A44; }
+  .district-info .type  { font-size: 12px; color: #8A94A6; }
+  .district-info .addr  { font-size: 11px; color: #B8CCEB; }
+  .data-source  { font-size: 10px; color: #C5CDD9; }
+  .calc-link    { font-size: 11px; color: #4F7BE8; margin-top: 2px; cursor: pointer; }
+
+  .chips-row {
+    display: flex;
+    gap: 8px;
+    margin-top: 14px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .metric-chip {
+    background: #F4F6FB;
+    border-radius: 10px;
+    padding: 8px 14px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 110px;
+  }
+  .metric-chip .label {
+    font-size: 10px;
+    color: #8A94A6;
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .metric-chip .value {
+    font-size: 16px;
+    font-weight: 700;
+    color: #1F2A44;
+    margin-top: 2px;
+  }
+  .dot-green {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #2EB86B;
+    display: inline-block;
+  }
+
+  .tags-row {
+    display: flex;
+    gap: 6px;
+    margin-top: 12px;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+  .tag-pill {
+    background: #EBF0FD;
+    color: #1D4FD8;
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .tag-pill.peak {
+    background: #FFF3E8;
+    color: #E8833A;
+  }
+
+  .split-bar-container { margin-top: 14px; padding: 0 4px; }
+  .split-bar-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #8A94A6;
+    margin-bottom: 4px;
+    font-weight: 500;
+  }
+  .split-bar {
+    height: 10px;
+    border-radius: 5px;
+    overflow: hidden;
+    display: flex;
+    background: #F4F6FB;
+  }
+  .split-bar .weekday { background: #1D4FD8; width: 74%; }
+  .split-bar .weekend { background: #B8CCEB; width: 26%; }
+
+  /* ── Survival card ── */
+  .card-survival {
+    display: flex;
+    flex-direction: column;
+  }
+  /* Hero survival: full-width main card in right col */
+  .card-survival-main {
+    display: flex;
+    flex-direction: column;
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 2px 8px rgba(30,50,100,0.07);
+    padding: 24px 28px;
+  }
+  .survival-main-body {
+    display: flex;
+    gap: 32px;
+    align-items: flex-start;
+    margin-top: 16px;
+  }
+  /* Left: big numbers */
+  .survival-main-numbers {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex-shrink: 0;
+  }
+  .survival-main-score-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .survival-main-score    { font-size: 56px; font-weight: 800; color: #1D4FD8; line-height: 1; }
+  .survival-main-arrow    { font-size: 24px; color: #B8CCEB; }
+  .survival-main-forecast { font-size: 56px; font-weight: 800; color: #2659D9; line-height: 1; }
+  .survival-main-delta {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 14px;
+    color: #2EB86B;
+    font-weight: 700;
+    background: #E8F8EF;
+    border-radius: 10px;
+    padding: 5px 12px;
+    align-self: flex-start;
+  }
+  /* Right: supporting chips */
+  .survival-main-chips {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    flex: 1;
+    justify-content: center;
+  }
+  .survival-chip {
+    background: #F4F6FB;
+    border-radius: 12px;
+    padding: 12px 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .survival-chip-label {
+    font-size: 10px;
+    color: #8A94A6;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+  }
+  .survival-chip-value {
+    font-size: 18px;
+    font-weight: 800;
+    color: #1F2A44;
+  }
+  .survival-chip-value.green { color: #2EB86B; }
+  .survival-chip-value.blue  { color: #1D4FD8; }
+  /* Chart area — full width below numbers+chips */
+  .survival-main-chart {
+    margin-top: 18px;
+    position: relative;
+  }
+  .survival-main-chart svg { width: 100%; height: 110px; }
+
+  .survival-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .survival-title-col { display: flex; flex-direction: column; gap: 2px; }
+  .survival-subtitle  { font-size: 11px; color: #8A94A6; margin-top: 2px; }
+  .info-icon          { font-size: 13px; color: #C5CDD9; cursor: pointer; }
+
+  .survival-score-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+  .survival-score    { font-size: 36px; font-weight: 800; color: #1D4FD8; }
+  .survival-arrow    { font-size: 18px; color: #8A94A6; }
+  .survival-forecast { font-size: 36px; font-weight: 800; color: #2659D9; }
+  .survival-delta {
+    font-size: 12px;
+    color: #2EB86B;
+    font-weight: 600;
+    background: #E8F8EF;
+    border-radius: 8px;
+    padding: 3px 8px;
+  }
+
+  .survival-chart {
+    margin-top: 10px;
+    flex: 1;
+    position: relative;
+  }
+  .survival-chart svg { width: 100%; height: 80px; }
+  .chart-ci { display: flex; align-items: center; gap: 4px; margin-top: 2px; }
+  .chart-ci span { font-size: 11px; color: #B8CCEB; }
+
+  .chart-legend { display: flex; gap: 14px; margin-top: 6px; }
+  .legend-item  { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #8A94A6; }
+  .legend-line  { width: 20px; height: 2px; background: #1D4FD8; border-radius: 1px; }
+  .legend-line.dashed {
+    background: repeating-linear-gradient(90deg, #4F7BE8 0px, #4F7BE8 4px, transparent 4px, transparent 7px);
+  }
+
+  /* ── Right Scroll Column ── */
+  .col-right {
+    flex: 1;
+    min-width: 0;
+    overflow-y: auto;
+    /* Allow natural document scroll — the column itself doesn't restrict height */
+  }
+
+  /* ── Section Heading Block ── */
+  .section-heading {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .section-heading + .section-heading,
+  .section-group + .section-group {
+    margin-top: 36px;
+  }
+  .section-accent-bar {
+    width: 3px;
+    height: 36px;
+    background: #1D4FD8;
+    border-radius: 2px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  /* Primary/main accent bar: thicker + taller */
+  .section-accent-bar.primary {
+    width: 5px;
+    height: 44px;
+    background: #1D4FD8;
+  }
+  .section-heading-text { display: flex; flex-direction: column; gap: 3px; }
+  .section-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #1F2A44;
+    letter-spacing: -0.3px;
+  }
+  /* Primary section title: blue + larger */
+  .section-title.primary {
+    font-size: 20px;
+    font-weight: 800;
+    color: #1D4FD8;
+    letter-spacing: -0.5px;
+  }
+  .section-subtitle {
+    font-size: 12px;
+    color: #8A94A6;
+    font-weight: 400;
+  }
+  .section-subtitle.primary {
+    font-size: 13px;
+    color: #4F7BE8;
+    font-weight: 500;
+  }
+
+  /* ── Section group spacing ── */
+  .section-group { padding-top: 4px; }
+  .section-group + .section-group { margin-top: 36px; }
+
+  /* ── Section card grid ── */
+  .section-grid {
+    display: grid;
+    gap: 12px;
+  }
+  .section-grid.cols-2 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .section-grid.cols-1 {
+    grid-template-columns: 1fr;
+  }
+  .grid-span-2 {
+    grid-column: 1 / -1;
+  }
+
+  /* ── KPI card ── */
+  .card-kpi {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+    padding: 18px 20px;
+  }
+  .kpi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+  .kpi-title-block { display: flex; align-items: center; gap: 6px; }
+  .kpi-title { font-size: 12px; font-weight: 600; color: #8A94A6; letter-spacing: 0.3px; }
+  .kpi-sub   { font-size: 10px; color: #C5CDD9; margin-top: 3px; }
+  .kpi-arrow-btn {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    background: #F4F6FB;
+    border: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    color: #8A94A6;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .kpi-badge {
+    display: inline-block;
+    background: #E8F8EF;
+    color: #2EB86B;
+    border-radius: 10px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 5px;
+  }
+  .kpi-badge.neutral { background: #EBF0FD; color: #4F7BE8; }
+
+  .kpi-value-chart-row {
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-between;
+    margin-top: 4px;
+    flex: 1;
+  }
+  .kpi-value { font-size: 32px; font-weight: 800; color: #1D4FD8; line-height: 1; }
+  .kpi-chart { display: flex; align-items: flex-end; }
+  .kpi-bench { font-size: 10px; color: #C5CDD9; margin-top: 4px; }
+
+  .mini-bars { display: flex; align-items: flex-end; gap: 3px; height: 52px; }
+  .mini-bar  { width: 10px; border-radius: 3px 3px 0 0; background: #B8CCEB; }
+  .mini-bar.highlight { background: #1D4FD8; }
+  .mini-line svg { width: 90px; height: 52px; }
+
+  /* ── Heatmap card ── */
+  .card-heatmap {
+    display: flex;
+    flex-direction: column;
+  }
+  .heatmap-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .heatmap-title  { font-size: 13px; font-weight: 700; color: #1F2A44; }
+  .heatmap-sub    { font-size: 11px; color: #8A94A6; margin-top: 2px; }
+
+  .heatmap-grid {
+    display: grid;
+    grid-template-columns: 44px repeat(7, 1fr);
+    gap: 3px;
+    margin-top: 10px;
+  }
+  .hm-day-header  { font-size: 10px; font-weight: 600; color: #8A94A6; text-align: center; padding: 2px 0; }
+  .hm-time-label  { font-size: 10px; color: #8A94A6; display: flex; align-items: center; padding-right: 4px; justify-content: flex-end; }
+  .hm-cell        { height: 26px; border-radius: 4px; background: #F4F6FB; }
+  .hm-1           { background: #F4F6FB; }
+  .hm-2           { background: #DCE6F8; }
+  .hm-3           { background: #B8CCEB; }
+  .hm-4           { background: #4F7BE8; }
+  .hm-5           { background: #1D4FD8; }
+
+  .hm-legend         { display: flex; align-items: center; gap: 4px; margin-top: 6px; }
+  .hm-legend-label   { font-size: 10px; color: #B8CCEB; }
+  .hm-legend-swatches { display: flex; gap: 3px; }
+  .hm-swatch         { width: 16px; height: 10px; border-radius: 2px; }
+
+  .hm-derived {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 6px;
+    margin-top: 10px;
+  }
+  .derived-card   { background: #F4F6FB; border-radius: 10px; padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .derived-label  { font-size: 10px; color: #8A94A6; }
+  .derived-value  { font-size: 13px; font-weight: 700; color: #1F2A44; }
+
+  /* ── Age/Gender card ── */
+  .card-age {
+    display: flex;
+    flex-direction: column;
+  }
+  .age-header    { display: flex; justify-content: space-between; align-items: flex-start; }
+  .age-title     { font-size: 13px; font-weight: 700; color: #1F2A44; }
+  .age-sub       { font-size: 11px; color: #8A94A6; margin-top: 2px; }
+  .age-highlight { font-size: 18px; font-weight: 800; color: #1D4FD8; }
+
+  .age-chart { flex: 1; display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+  .age-row   { display: flex; align-items: center; gap: 6px; }
+  .age-label { width: 30px; font-size: 11px; color: #8A94A6; flex-shrink: 0; text-align: right; }
+  .age-bars  { display: flex; gap: 2px; align-items: center; }
+  .bar-female { height: 11px; border-radius: 2px 0 0 2px; background: #1D4FD8; }
+  .bar-male   { height: 11px; border-radius: 0 2px 2px 0; background: #B8CCEB; }
+  .age-pct    { font-size: 10px; color: #8A94A6; margin-left: 4px; }
+  .age-pct.strong { color: #1D4FD8; font-weight: 700; }
+
+  .age-legend { display: flex; gap: 12px; margin-top: 8px; }
+  .age-legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: #8A94A6; }
+  .dot-female { width: 8px; height: 8px; border-radius: 50%; background: #1D4FD8; }
+  .dot-male   { width: 8px; height: 8px; border-radius: 50%; background: #B8CCEB; }
+
+  /* ── Day/Night card ── */
+  .card-daynight {
+    display: flex;
+    flex-direction: column;
+  }
+  .daynight-title { font-size: 13px; font-weight: 700; color: #1F2A44; }
+  .daynight-sub   { font-size: 11px; color: #8A94A6; margin-top: 2px; }
+
+  .daynight-scores { display: flex; gap: 16px; margin-top: 6px; align-items: baseline; }
+  .dn-score        { font-size: 26px; font-weight: 800; }
+  .dn-score.day    { color: #4F7BE8; }
+  .dn-score.night  { color: #1D4FD8; }
+  .dn-label        { font-size: 11px; color: #8A94A6; }
+
+  .dn-stacked-bar  { height: 20px; border-radius: 5px; overflow: hidden; display: flex; margin-top: 8px; }
+  .dn-day-seg   { background: #4F7BE8; width: 54%; }
+  .dn-night-seg { background: #1D4FD8; width: 46%; }
+
+  .dn-stacked-labels { display: flex; justify-content: space-between; font-size: 10px; color: #8A94A6; margin-top: 3px; }
+  .dn-bench { font-size: 10px; color: #C5CDD9; margin-top: 4px; }
+
+  .dn-hourly-title {
+    font-size: 11px; font-weight: 600; color: #8A94A6;
+    margin-top: 12px; margin-bottom: 6px;
+  }
+  .dn-hourly-bars { display: flex; gap: 4px; align-items: flex-end; height: 56px; }
+  .dn-hourly-group { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .dn-hourly-bar   { width: 100%; border-radius: 3px 3px 0 0; background: #DCE6F8; min-height: 4px; }
+  .dn-hourly-bar.peak { background: #1D4FD8; }
+  .dn-hourly-label { font-size: 9px; color: #B8CCEB; text-align: center; }
+
+  /* ── Rent card ── */
+  .card-rent {
+    display: flex;
+    flex-direction: column;
+  }
+  .rent-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .rent-title  { font-size: 13px; font-weight: 700; color: #1F2A44; }
+  .rent-sub    { font-size: 10px; color: #C5CDD9; margin-top: 2px; }
+  .rent-value  { font-size: 28px; font-weight: 800; color: #1F2A44; margin-top: 6px; }
+  .rent-badge  {
+    display: inline-block;
+    background: #FFF3E8;
+    color: #E8833A;
+    border-radius: 8px;
+    padding: 2px 8px;
+    font-size: 10px;
+    font-weight: 600;
+    margin-top: 4px;
+  }
+  .rent-burden { font-size: 10px; color: #8A94A6; margin-top: 4px; }
+  .rent-trend-label { font-size: 10px; color: #B8CCEB; margin-top: 6px; margin-bottom: 3px; }
+  .rent-trend-bars  { display: flex; gap: 4px; align-items: flex-end; height: 28px; }
+  .rent-bar         { flex: 1; border-radius: 2px 2px 0 0; background: #DCE6F8; }
+  .rent-bar.current { background: #1D4FD8; }
+
+  /* ── Buzz Gap card ── */
+  .card-buzz {
+    display: flex;
+    flex-direction: column;
+  }
+  .buzz-header { display: flex; justify-content: space-between; align-items: flex-start; }
+  .buzz-title  { font-size: 13px; font-weight: 700; color: #1F2A44; }
+  .buzz-sub    { font-size: 10px; color: #C5CDD9; margin-top: 2px; }
+
+  .buzz-top { font-size: 15px; font-weight: 700; color: #1D4FD8; margin-top: 8px; }
+
+  .buzz-metric-row { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .buzz-metric     { display: flex; flex-direction: column; gap: 3px; }
+  .buzz-metric-header {
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .buzz-metric-name { font-size: 11px; color: #8A94A6; }
+  .buzz-gap-badge {
+    font-size: 11px;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 1px 7px;
+  }
+  .buzz-gap-badge.positive { background: #EBF0FD; color: #1D4FD8; }
+  .buzz-gap-badge.negative { background: #FFF3E8; color: #E8833A; }
+
+  .buzz-bar-track {
+    height: 8px;
+    background: #F4F6FB;
+    border-radius: 4px;
+    position: relative;
+    overflow: visible;
+  }
+  .buzz-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    position: absolute;
+    top: 0; left: 0;
+  }
+  .buzz-bar-fill.blue   { background: #1D4FD8; }
+  .buzz-bar-fill.orange { background: #E8833A; }
+  .buzz-bar-ref {
+    position: absolute;
+    top: -2px;
+    height: 12px;
+    width: 2px;
+    background: #B8CCEB;
+    border-radius: 1px;
+  }
+
+  .buzz-warning {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #FFF3E8;
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-top: 10px;
+    font-size: 11px;
+    color: #E8833A;
+    font-weight: 600;
+  }
+  .buzz-warning-icon { font-size: 13px; }
+
+  /* ── CTA Button at bottom of right col ── */
+  .cta-report-wrap {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 20px;
+    padding-bottom: 24px;
+  }
+  .cta-report-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: #1D4FD8;
+    color: #fff;
+    border: none;
+    border-radius: 12px;
+    padding: 11px 22px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    letter-spacing: -0.2px;
+  }
+</style>
+</head>
+<body>
+
+<!-- TopBar — sticky at top -->
+<div class="topbar">
+  <div class="logo">
+    <span>상권</span><span>레이더</span>
+  </div>
+  <div class="nav-pills">
+    <div class="nav-pill active">지역 분석</div>
+    <div class="nav-pill">상권 비교</div>
+    <div class="nav-pill">랭킹</div>
+    <div class="nav-pill">트렌드</div>
+    <div class="nav-pill">관리</div>
+  </div>
+  <button class="cta-btn">내 리포트</button>
+</div>
+
+<!-- Main: icon-rail + left anchor + right scroll -->
+<div class="main">
+
+  <!-- Icon Rail — sticky -->
+  <div class="icon-rail">
+    <div class="rail-icon active">⌂</div>
+    <div class="rail-icon">▦</div>
+    <div class="rail-icon">◎</div>
+    <div class="rail-icon">▤</div>
+    <div class="rail-icon">⬡</div>
+    <div class="rail-spacer"></div>
+    <div class="rail-icon">💬</div>
+    <div class="rail-avatar">K</div>
+  </div>
+
+  <!-- Left Anchor Column — sticky, shows hero + survival forecast -->
+  <div class="col-left">
+
+    <!-- Hero Card -->
+    <div class="card card-hero">
+      <div class="hero-top-row">
+        <span class="hero-score-label">종합 점수</span>
+        <div class="hero-actions">
+          <button class="hero-action-btn">···</button>
+          <button class="hero-action-btn">↗</button>
+        </div>
+      </div>
+
+      <div class="score-number-row">
+        <span class="score-number">87</span>
+        <span class="score-denom">/100</span>
+        <span class="score-rank">상위 8%</span>
+      </div>
+
+      <div class="score-breakdown-label">점수 구성</div>
+      <div class="score-breakdown">
+        <span class="breakdown-chip survival">생존율 38</span>
+        <span class="breakdown-chip population">유동인구 27</span>
+        <span class="breakdown-chip sales">매출 22</span>
+      </div>
+
+      <div class="hero-district-row">
+        <div class="district-badge">
+          <span class="district-name">역삼</span>
+          <span class="district-sub">역삼동 상권</span>
+        </div>
+        <div class="district-info">
+          <div class="name">역삼동 상권</div>
+          <div class="type">발달상권 · 오피스</div>
+          <div class="addr">강남구 역삼1동 · 2호선 역세권 발달상권</div>
+          <div class="data-source">서울 열린데이터+R-ONE 공공데이터 기반</div>
+          <div class="calc-link">산출 근거 보기 ↗</div>
+        </div>
+      </div>
+
+      <div class="chips-row">
+        <div class="metric-chip">
+          <span class="label">생존율</span>
+          <span class="value">82%</span>
+        </div>
+        <div class="metric-chip">
+          <span class="label"><span class="dot-green"></span> 폐업위험</span>
+          <span class="value">낮음</span>
+        </div>
+        <div class="metric-chip">
+          <span class="label">유동인구</span>
+          <span class="value">12.5만·일</span>
+        </div>
+      </div>
+
+      <div class="tags-row">
+        <span class="tag-pill">🏢 오피스형 상권</span>
+        <span class="tag-pill peak">피크 11–14시</span>
+      </div>
+
+      <div class="split-bar-container">
+        <div class="split-bar-labels">
+          <span>주중 74%</span>
+          <span>주말 26%</span>
+        </div>
+        <div class="split-bar">
+          <div class="weekday"></div>
+          <div class="weekend"></div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /col-left -->
+
+  <!-- Right Scroll Column — scrolls independently while left stays fixed -->
+  <div class="col-right">
+
+    <!-- ──────────────────────────────────
+         섹션 0: 생존율 예측 (메인)
+         ────────────────────────────────── -->
+    <div class="section-group">
+      <div class="section-heading">
+        <div class="section-accent-bar primary"></div>
+        <div class="section-heading-text">
+          <span class="section-title primary">🎯 생존율 예측</span>
+          <span class="section-subtitle primary">이 상권, 앞으로 4분기 어떻게 될까</span>
+        </div>
+      </div>
+
+      <div class="card-survival-main">
+        <!-- Header row -->
+        <div class="survival-header">
+          <div class="survival-title-col">
+            <span class="card-title">생존율 예측</span>
+            <span class="survival-subtitle">ML 향후 4분기 전망</span>
+          </div>
+          <span class="info-icon">ⓘ</span>
+        </div>
+
+        <!-- Numbers (left) + supporting chips (right) -->
+        <div class="survival-main-body">
+          <div class="survival-main-numbers">
+            <div class="survival-main-score-row">
+              <span class="survival-main-score">82%</span>
+              <span class="survival-main-arrow">→</span>
+              <span class="survival-main-forecast">85%</span>
+            </div>
+            <span class="survival-main-delta">▲ 3.4%p · 4분기 후 전망</span>
+          </div>
+
+          <div class="survival-main-chips">
+            <div class="survival-chip">
+              <span class="survival-chip-label">현재 생존율</span>
+              <span class="survival-chip-value blue">82%</span>
+            </div>
+            <div class="survival-chip">
+              <span class="survival-chip-label">폐업위험</span>
+              <span class="survival-chip-value green">낮음</span>
+            </div>
+            <div class="survival-chip">
+              <span class="survival-chip-label">4분기 후 전망</span>
+              <span class="survival-chip-value blue">85% ▲3.4%p</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Full-width chart -->
+        <div class="survival-main-chart">
+          <svg viewBox="0 0 860 110" preserveAspectRatio="none">
+            <!-- CI band -->
+            <path d="M530,74 Q660,54 860,38" fill="none" stroke="#DCE6F8" stroke-width="14" stroke-linecap="round" opacity="0.5"/>
+            <!-- Actual line -->
+            <polyline points="0,84 120,78 240,72 370,65 530,58" fill="none" stroke="#1D4FD8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- Forecast dashed -->
+            <polyline points="530,58 660,44 860,28" fill="none" stroke="#4F7BE8" stroke-width="2.5" stroke-dasharray="6,5" stroke-linecap="round" stroke-linejoin="round"/>
+            <!-- Endpoint dot + label -->
+            <circle cx="860" cy="28" r="5" fill="#4F7BE8"/>
+            <text x="836" y="22" font-size="12" fill="#4F7BE8" font-weight="700" font-family="system-ui">85%</text>
+          </svg>
+          <div class="chart-ci"><span>±3%p</span></div>
+        </div>
+
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-line"></div><span>실적</span></div>
+          <div class="legend-item"><div class="legend-line dashed"></div><span>예측</span></div>
+        </div>
+      </div>
+    </div><!-- /section-group 생존율 -->
+
+    <!-- ──────────────────────────────────
+         섹션 1: 유동인구
+         ────────────────────────────────── -->
+    <div class="section-group">
+      <div class="section-heading">
+        <div class="section-accent-bar"></div>
+        <div class="section-heading-text">
+          <span class="section-title">유동인구</span>
+          <span class="section-subtitle">누가, 언제 이 상권에 오는가</span>
+        </div>
+      </div>
+
+      <div class="section-grid cols-1">
+
+        <!-- Heatmap: 풀폭 -->
+        <div class="card card-heatmap grid-span-2">
+          <div class="heatmap-header">
+            <div>
+              <div class="heatmap-title">유동인구 시간·요일 패턴</div>
+              <div class="heatmap-sub">시간대 × 요일 평균 유동인구</div>
+            </div>
+            <span class="info-icon">ⓘ</span>
+          </div>
+
+          <div class="heatmap-grid">
+            <div></div>
+            <div class="hm-day-header">월</div>
+            <div class="hm-day-header">화</div>
+            <div class="hm-day-header">수</div>
+            <div class="hm-day-header">목</div>
+            <div class="hm-day-header">금</div>
+            <div class="hm-day-header">토</div>
+            <div class="hm-day-header">일</div>
+
+            <div class="hm-time-label">00–06</div>
+            <div class="hm-cell hm-1"></div><div class="hm-cell hm-1"></div>
+            <div class="hm-cell hm-1"></div><div class="hm-cell hm-1"></div>
+            <div class="hm-cell hm-1"></div><div class="hm-cell hm-2"></div>
+            <div class="hm-cell hm-2"></div>
+
+            <div class="hm-time-label">06–11</div>
+            <div class="hm-cell hm-3"></div><div class="hm-cell hm-3"></div>
+            <div class="hm-cell hm-3"></div><div class="hm-cell hm-3"></div>
+            <div class="hm-cell hm-4"></div><div class="hm-cell hm-2"></div>
+            <div class="hm-cell hm-2"></div>
+
+            <div class="hm-time-label">11–14</div>
+            <div class="hm-cell hm-5"></div><div class="hm-cell hm-5"></div>
+            <div class="hm-cell hm-5"></div><div class="hm-cell hm-5"></div>
+            <div class="hm-cell hm-5"></div><div class="hm-cell hm-3"></div>
+            <div class="hm-cell hm-2"></div>
+
+            <div class="hm-time-label">14–17</div>
+            <div class="hm-cell hm-3"></div><div class="hm-cell hm-3"></div>
+            <div class="hm-cell hm-4"></div><div class="hm-cell hm-3"></div>
+            <div class="hm-cell hm-4"></div><div class="hm-cell hm-3"></div>
+            <div class="hm-cell hm-2"></div>
+
+            <div class="hm-time-label">17–21</div>
+            <div class="hm-cell hm-4"></div><div class="hm-cell hm-4"></div>
+            <div class="hm-cell hm-5"></div><div class="hm-cell hm-4"></div>
+            <div class="hm-cell hm-5"></div><div class="hm-cell hm-4"></div>
+            <div class="hm-cell hm-3"></div>
+
+            <div class="hm-time-label">21–24</div>
+            <div class="hm-cell hm-2"></div><div class="hm-cell hm-2"></div>
+            <div class="hm-cell hm-3"></div><div class="hm-cell hm-2"></div>
+            <div class="hm-cell hm-3"></div><div class="hm-cell hm-4"></div>
+            <div class="hm-cell hm-3"></div>
+          </div>
+
+          <div class="hm-legend">
+            <span class="hm-legend-label">낮음</span>
+            <div class="hm-legend-swatches">
+              <div class="hm-swatch" style="background:#F4F6FB"></div>
+              <div class="hm-swatch" style="background:#DCE6F8"></div>
+              <div class="hm-swatch" style="background:#B8CCEB"></div>
+              <div class="hm-swatch" style="background:#4F7BE8"></div>
+              <div class="hm-swatch" style="background:#1D4FD8"></div>
+            </div>
+            <span class="hm-legend-label">높음</span>
+          </div>
+
+          <div class="hm-derived">
+            <div class="derived-card">
+              <span class="derived-label">피크 시간대</span>
+              <span class="derived-value">11–14시</span>
+            </div>
+            <div class="derived-card">
+              <span class="derived-label">최다 요일</span>
+              <span class="derived-value">금 15.2만</span>
+            </div>
+            <div class="derived-card">
+              <span class="derived-label">주중:주말</span>
+              <span class="derived-value">74 : 26</span>
+            </div>
+            <div class="derived-card">
+              <span class="derived-label">유동인구 증감</span>
+              <span class="derived-value">+4.2% 전분기</span>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /section-grid cols-1 -->
+
+      <!-- 연령·성별 + 밤vs낮 in 2-col -->
+      <div class="section-grid cols-2" style="margin-top:12px">
+
+        <!-- Age/Gender card -->
+        <div class="card card-age">
+          <div class="age-header">
+            <div>
+              <div class="age-title">연령·성별 매출</div>
+              <div class="age-sub">최다 · 20대 33% · 성별 분리</div>
+            </div>
+            <div class="age-highlight">20대 33%</div>
+          </div>
+
+          <div class="age-chart">
+            <div class="age-row">
+              <span class="age-label">10대</span>
+              <div class="age-bars">
+                <div class="bar-female" style="width:34px"></div>
+                <div class="bar-male"   style="width:24px"></div>
+              </div>
+              <span class="age-pct">12%</span>
+            </div>
+            <div class="age-row">
+              <span class="age-label">20대</span>
+              <div class="age-bars">
+                <div class="bar-female" style="width:88px"></div>
+                <div class="bar-male"   style="width:72px"></div>
+              </div>
+              <span class="age-pct strong">33%</span>
+            </div>
+            <div class="age-row">
+              <span class="age-label">30대</span>
+              <div class="age-bars">
+                <div class="bar-female" style="width:54px"></div>
+                <div class="bar-male"   style="width:43px"></div>
+              </div>
+              <span class="age-pct">18%</span>
+            </div>
+            <div class="age-row">
+              <span class="age-label">40대</span>
+              <div class="age-bars">
+                <div class="bar-female" style="width:44px"></div>
+                <div class="bar-male"   style="width:38px"></div>
+              </div>
+              <span class="age-pct">15%</span>
+            </div>
+            <div class="age-row">
+              <span class="age-label">50대</span>
+              <div class="age-bars">
+                <div class="bar-female" style="width:34px"></div>
+                <div class="bar-male"   style="width:28px"></div>
+              </div>
+              <span class="age-pct">10%</span>
+            </div>
+            <div class="age-row">
+              <span class="age-label">60대+</span>
+              <div class="age-bars">
+                <div class="bar-female" style="width:18px"></div>
+                <div class="bar-male"   style="width:21px"></div>
+              </div>
+              <span class="age-pct">6%</span>
+            </div>
+          </div>
+
+          <div class="age-legend">
+            <div class="age-legend-item"><span class="dot-female"></span>여성</div>
+            <div class="age-legend-item"><span class="dot-male"></span>남성</div>
+          </div>
+        </div>
+
+        <!-- Day/Night card -->
+        <div class="card card-daynight">
+          <div class="daynight-title">밤 vs 낮 매출</div>
+          <div class="daynight-sub">시간대 매출 구성</div>
+
+          <div class="daynight-scores">
+            <div><div class="dn-score day">낮 54%</div></div>
+            <div><div class="dn-score night">밤 46%</div></div>
+          </div>
+
+          <div class="dn-stacked-bar">
+            <div class="dn-day-seg"></div>
+            <div class="dn-night-seg"></div>
+          </div>
+          <div class="dn-stacked-labels">
+            <span>낮 54%</span>
+            <span>밤 46%</span>
+          </div>
+          <div class="dn-bench">오피스형 평균 38% 대비 +8%p</div>
+
+          <div class="dn-hourly-title">시간대별 매출 구성</div>
+          <div class="dn-hourly-bars">
+            <div class="dn-hourly-group">
+              <div class="dn-hourly-bar" style="height:10px"></div>
+              <div class="dn-hourly-label">00–06</div>
+            </div>
+            <div class="dn-hourly-group">
+              <div class="dn-hourly-bar" style="height:18px"></div>
+              <div class="dn-hourly-label">06–11</div>
+            </div>
+            <div class="dn-hourly-group">
+              <div class="dn-hourly-bar peak" style="height:44px"></div>
+              <div class="dn-hourly-label">11–14</div>
+            </div>
+            <div class="dn-hourly-group">
+              <div class="dn-hourly-bar" style="height:26px"></div>
+              <div class="dn-hourly-label">14–17</div>
+            </div>
+            <div class="dn-hourly-group">
+              <div class="dn-hourly-bar" style="height:36px"></div>
+              <div class="dn-hourly-label">17–21</div>
+            </div>
+            <div class="dn-hourly-group">
+              <div class="dn-hourly-bar" style="height:30px"></div>
+              <div class="dn-hourly-label">21–24</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 외국인 비중 KPI -->
+        <div class="card card-kpi">
+          <div class="kpi-header">
+            <div>
+              <div class="kpi-title-block">
+                <span class="kpi-title">외국인 비중</span>
+                <span class="info-icon">ⓘ</span>
+              </div>
+              <div class="kpi-sub">생활인구 중 외국인 비중</div>
+            </div>
+            <button class="kpi-arrow-btn">↗</button>
+          </div>
+          <span class="kpi-badge">+2.1%p 전분기</span>
+          <div class="kpi-value-chart-row">
+            <div>
+              <div class="kpi-value">21.3%</div>
+              <div class="kpi-bench">서울 평균 8.4% · 강남구 상위 15%</div>
+            </div>
+            <div class="kpi-chart">
+              <div class="mini-bars">
+                <div class="mini-bar" style="height:24px"></div>
+                <div class="mini-bar" style="height:28px"></div>
+                <div class="mini-bar" style="height:22px"></div>
+                <div class="mini-bar" style="height:32px"></div>
+                <div class="mini-bar" style="height:30px"></div>
+                <div class="mini-bar highlight" style="height:42px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /section-grid cols-2 (유동인구) -->
+    </div><!-- /section-group 1 -->
+
+
+    <!-- ──────────────────────────────────
+         섹션 2: 매출·소비
+         ────────────────────────────────── -->
+    <div class="section-group">
+      <div class="section-heading">
+        <div class="section-accent-bar"></div>
+        <div class="section-heading-text">
+          <span class="section-title">매출·소비</span>
+          <span class="section-subtitle">고객은 얼마나, 어떻게 지갑을 여는가</span>
+        </div>
+      </div>
+
+      <div class="section-grid cols-2">
+
+        <!-- 인당 소비 KPI -->
+        <div class="card card-kpi">
+          <div class="kpi-header">
+            <div>
+              <div class="kpi-title-block">
+                <span class="kpi-title">인당 소비</span>
+                <span class="info-icon">ⓘ</span>
+              </div>
+              <div class="kpi-sub">1회 평균 결제금액</div>
+            </div>
+            <button class="kpi-arrow-btn">↗</button>
+          </div>
+          <span class="kpi-badge">+6% 전분기</span>
+          <div class="kpi-value-chart-row">
+            <div>
+              <div class="kpi-value">4.7만</div>
+              <div class="kpi-bench">오피스형 평균 3.9만 · 상위 22%</div>
+            </div>
+            <div class="kpi-chart">
+              <svg class="mini-line" viewBox="0 0 90 52">
+                <polyline points="0,42 18,36 36,40 54,28 72,22 90,14" fill="none" stroke="#B8CCEB" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <polyline points="72,22 90,14" fill="none" stroke="#1D4FD8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                <circle cx="90" cy="14" r="3" fill="#1D4FD8"/>
+              </svg>
+            </div>
+          </div>
+        </div>
+
+        <!-- 주말 비중 KPI -->
+        <div class="card card-kpi">
+          <div class="kpi-header">
+            <div>
+              <div class="kpi-title-block">
+                <span class="kpi-title">주말 비중</span>
+                <span class="info-icon">ⓘ</span>
+              </div>
+              <div class="kpi-sub">전체 매출 중 토·일 비중</div>
+            </div>
+            <button class="kpi-arrow-btn">↗</button>
+          </div>
+          <span class="kpi-badge neutral">주말 집중</span>
+          <div class="kpi-value-chart-row">
+            <div>
+              <div class="kpi-value">38.2%</div>
+              <div class="kpi-bench">전체 상권 평균 28.4%</div>
+            </div>
+            <div class="kpi-chart">
+              <div class="mini-bars">
+                <div class="mini-bar" style="height:20px"></div>
+                <div class="mini-bar" style="height:26px"></div>
+                <div class="mini-bar" style="height:24px"></div>
+                <div class="mini-bar" style="height:30px"></div>
+                <div class="mini-bar highlight" style="height:38px"></div>
+                <div class="mini-bar" style="height:32px"></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+      </div><!-- /section-grid (매출·소비) -->
+    </div><!-- /section-group 2 -->
+
+
+    <!-- ──────────────────────────────────
+         섹션 3: 비용·리스크
+         ────────────────────────────────── -->
+    <div class="section-group">
+      <div class="section-heading">
+        <div class="section-accent-bar"></div>
+        <div class="section-heading-text">
+          <span class="section-title">비용·리스크</span>
+          <span class="section-subtitle">창업 전 반드시 확인할 비용과 신호</span>
+        </div>
+      </div>
+
+      <div class="section-grid cols-2">
+
+        <!-- Rent card -->
+        <div class="card card-rent">
+          <div class="rent-header">
+            <div>
+              <div class="rent-title">임대료</div>
+              <div class="rent-sub">1층 기준 · ㎡당 환산 임대료</div>
+            </div>
+            <span class="info-icon">ⓘ</span>
+          </div>
+          <div class="rent-value">18.7만/㎡</div>
+          <span class="rent-badge">서울 상위 11%</span>
+          <div class="rent-burden">매출 대비 임대료 부담률 8.9% · 오피스형 평균 7.4%</div>
+          <div class="rent-trend-label">최근 4분기</div>
+          <div class="rent-trend-bars">
+            <div class="rent-bar" style="height:14px"></div>
+            <div class="rent-bar" style="height:18px"></div>
+            <div class="rent-bar" style="height:22px"></div>
+            <div class="rent-bar current" style="height:26px"></div>
+          </div>
+        </div>
+
+        <!-- Buzz Gap card -->
+        <div class="card card-buzz">
+          <div class="buzz-header">
+            <div>
+              <div class="buzz-title">화제성 Gap</div>
+              <div class="buzz-sub">검색 화제성 vs 실측 지표 백분위</div>
+            </div>
+            <span class="info-icon">ⓘ</span>
+          </div>
+
+          <div class="buzz-top">화제성 상위 12%</div>
+
+          <div class="buzz-metric-row">
+            <div class="buzz-metric">
+              <div class="buzz-metric-header">
+                <span class="buzz-metric-name">유동인구 상위 8%</span>
+                <span class="buzz-gap-badge positive">gap +4p</span>
+              </div>
+              <div class="buzz-bar-track">
+                <div class="buzz-bar-fill blue" style="width:92%"></div>
+                <div class="buzz-bar-ref" style="left:88%"></div>
+              </div>
+            </div>
+
+            <div class="buzz-metric">
+              <div class="buzz-metric-header">
+                <span class="buzz-metric-name">인당 소비 상위 40%</span>
+                <span class="buzz-gap-badge negative">gap −28p</span>
+              </div>
+              <div class="buzz-bar-track">
+                <div class="buzz-bar-fill orange" style="width:60%"></div>
+                <div class="buzz-bar-ref" style="left:88%"></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="buzz-warning">
+            <span class="buzz-warning-icon">⚠</span>
+            화제성 대비 인당 소비 저조 — 거품 주의
+          </div>
+        </div>
+
+      </div><!-- /section-grid (비용·리스크) -->
+
+      <!-- Bottom CTA -->
+      <div class="cta-report-wrap">
+        <button class="cta-report-btn">상세 리포트 생성 ↗</button>
+      </div>
+
+    </div><!-- /section-group 3 -->
+
+  </div><!-- /col-right -->
+
+</div><!-- /main -->
+
+</body>
+</html>

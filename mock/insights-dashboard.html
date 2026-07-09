@@ -1,0 +1,1112 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>CommercialRadar · 상권 인사이트 (Mock)</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg: #0f1419; --panel: #1a212b; --panel-2: #212a36; --line: #2c3846;
+    --text: #e6edf3; --muted: #8b98a9; --accent: #4f8cff; --green: #22c55e;
+    --warn: #f59e0b; --pink: #ec4899; --purple: #a855f7; --cyan: #06b6d4;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Pretendard", -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif;
+    background: radial-gradient(1200px 600px at 80% -10%, #16324f33, transparent), var(--bg);
+    color: var(--text); -webkit-font-smoothing: antialiased;
+  }
+  header { padding: 28px 32px 0; max-width: 1320px; margin: 0 auto; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 16px var(--accent); }
+  .brand h1 { font-size: 20px; margin: 0; letter-spacing: -0.02em; }
+  .brand .tag { font-size: 11px; color: var(--muted); border: 1px solid var(--line); padding: 2px 8px; border-radius: 999px; margin-left: 4px; }
+  header p { color: var(--muted); margin: 8px 0 0; font-size: 13px; }
+
+  /* 탭 */
+  .tabs { display: flex; gap: 4px; margin: 20px 0 0; border-bottom: 1px solid var(--line); }
+  .tab-btn {
+    appearance: none; background: none; border: none; cursor: pointer;
+    color: var(--muted); font-size: 14px; font-weight: 600; font-family: inherit;
+    padding: 12px 18px; border-bottom: 2px solid transparent; margin-bottom: -1px;
+    transition: color .15s;
+  }
+  .tab-btn:hover { color: var(--text); }
+  .tab-btn.active { color: var(--text); border-bottom-color: var(--accent); }
+
+  .panel-meta { max-width: 1320px; margin: 0 auto; padding: 16px 32px 0; }
+  .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { font-size: 13px; color: var(--muted); background: var(--panel); border: 1px solid var(--line); padding: 6px 14px; border-radius: 999px; cursor: default; }
+  .chip.active { color: var(--text); border-color: var(--accent); background: #4f8cff1a; }
+
+  .grid { max-width: 1320px; margin: 12px auto 48px; padding: 0 32px; display: grid; grid-template-columns: repeat(6, 1fr); gap: 18px; }
+  .card { background: linear-gradient(180deg, var(--panel-2), var(--panel)); border: 1px solid var(--line); border-radius: 16px; padding: 20px; display: flex; flex-direction: column; min-height: 300px; }
+  .card.span3 { grid-column: span 3; } .card.span2 { grid-column: span 2; }
+  .card.span4 { grid-column: span 4; } .card.span6 { grid-column: span 6; }
+  .card-head { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 4px; }
+  .card-head h2 { font-size: 15px; margin: 0; letter-spacing: -0.01em; }
+  .card-head .num { font-size: 11px; color: var(--muted); font-weight: 600; }
+  .card .sub { color: var(--muted); font-size: 12px; margin: 2px 0 14px; }
+  .metric-row { display: flex; align-items: baseline; gap: 8px; margin-bottom: 12px; }
+  .metric-row .big { font-size: 30px; font-weight: 700; letter-spacing: -0.03em; }
+  .metric-row .delta { font-size: 12px; font-weight: 600; }
+  .up { color: var(--green); } .down { color: #ef4444; }
+  .chart-wrap { position: relative; flex: 1; min-height: 180px; }
+  .heat { display: grid; grid-template-columns: 46px repeat(7, 1fr); gap: 4px; align-content: center; height: 100%; font-size: 11px; }
+  .heat .hh { color: var(--muted); text-align: center; align-self: center; }
+  .heat .hr { color: var(--muted); text-align: right; padding-right: 6px; align-self: center; }
+  .heat .hc { border-radius: 4px; min-height: 26px; display: flex; align-items: center; justify-content: center; color: #eaf1ff; font-weight: 600; font-size: 10px; }
+  footer { max-width: 1320px; margin: 0 auto 40px; padding: 0 32px; color: var(--muted); font-size: 12px; }
+
+  .tab-panel { display: none; }
+  .tab-panel.active { display: block; }
+
+  @media (max-width: 980px) {
+    .grid { grid-template-columns: 1fr; }
+    .card.span3, .card.span2, .card.span4, .card.span6 { grid-column: span 1; }
+  }
+</style>
+</head>
+<body>
+  <header>
+    <div class="brand">
+      <span class="dot"></span>
+      <h1>상권 인사이트</h1>
+      <span class="tag">MOCK DATA</span>
+    </div>
+    <p>서울 상권의 소비·유동 특성을 지표별로 시각화한 데모 대시보드입니다.</p>
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="gangnam">📍 강남역</button>
+      <button class="tab-btn" data-tab="all">🗺️ 전체 상권 비교</button>
+      <button class="tab-btn" data-tab="other">🧪 심화 분석</button>
+      <button class="tab-btn" data-tab="percap">💳 인당 소비</button>
+      <button class="tab-btn" data-tab="hongdae">🎈 홍대입구</button>
+      <button class="tab-btn" data-tab="hongpct">📊 홍대 · 백분율</button>
+      <button class="tab-btn" data-tab="daynight">🌗 밤 vs 낮 매출</button>
+      <button class="tab-btn" data-tab="buzzgap">🔍 화제성 gap</button>
+      <button class="tab-btn" data-tab="office">🏢 숨은 오피스</button>
+    </nav>
+  </header>
+
+  <!-- ═══════════ 탭 1: 강남역 ═══════════ -->
+  <div class="tab-panel active" id="tab-gangnam">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">📍 강남역</span>
+        <span class="chip">2026 · Q1</span>
+        <span class="chip">카드매출 기준</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span2">
+        <div class="card-head"><h2>① 외국인 매출 비중</h2><span class="num">GAUGE</span></div>
+        <div class="sub">전체 카드매출 중 해외카드 결제 비율</div>
+        <div class="chart-wrap"><canvas id="foreignGauge"></canvas></div>
+      </section>
+      <section class="card span4">
+        <div class="card-head"><h2>② 밤 매출 vs 낮 매출</h2><span class="num">24H AREA</span></div>
+        <div class="sub">시간대별 매출 곡선 · 낮(06–18) <b style="color:var(--warn)">■</b> / 밤(18–06) <b style="color:var(--purple)">■</b> — 밤 매출이 46%</div>
+        <div class="chart-wrap"><canvas id="hourArea"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>③ 요일별 매출 · 주말 비중</h2><span class="num">BAR</span></div>
+        <div class="sub">요일별 매출(억원) · 주말(토·일) 비중 <b class="up">38.2%</b></div>
+        <div class="chart-wrap"><canvas id="weekdayBar"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>④ 연령·성별 매출 비중</h2><span class="num">RADAR</span></div>
+        <div class="sub">최다 비중: <b>20대 (33%)</b> · 남/여 분리</div>
+        <div class="chart-wrap"><canvas id="ageRadar"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>⑤ 유입 vs 로컬</h2><span class="num">DOUGHNUT</span></div>
+        <div class="sub">유동인구 중 타 지역 유입 / 거주 인접</div>
+        <div class="chart-wrap"><canvas id="inflowDonut"></canvas></div>
+      </section>
+      <section class="card span4">
+        <div class="card-head"><h2>⑤-1 유입 인구 출발지 TOP 5</h2><span class="num">H-BAR</span></div>
+        <div class="sub">강남역 유입 유동인구의 거주지 상위 5개 지역 (천명/일)</div>
+        <div class="chart-wrap"><canvas id="originBar"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 2: 전체 상권 비교 ═══════════ -->
+  <div class="tab-panel" id="tab-all">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">전체 상권</span>
+        <span class="chip">강남역</span><span class="chip">홍대입구</span>
+        <span class="chip">명동</span><span class="chip">성수동</span><span class="chip">여의도</span>
+        <span class="chip">2026 · Q1</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span3">
+        <div class="card-head"><h2>① 외국인 매출 비중</h2><span class="num">FOREIGN SHARE</span></div>
+        <div class="sub">전체 카드매출 중 외국인(해외카드) 결제 비율</div>
+        <div class="metric-row"><span class="big">18.4%</span><span class="delta up">▲ 2.1%p</span></div>
+        <div class="chart-wrap"><canvas id="foreignChart"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>② 밤 매출 vs 낮 매출</h2><span class="num">DAY / NIGHT</span></div>
+        <div class="sub">상권별 낮(06–18시) / 밤(18–06시) 매출 구성</div>
+        <div class="metric-row"><span class="big">밤 43%</span><span class="delta">낮 57%</span></div>
+        <div class="chart-wrap"><canvas id="dayNightChart"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>③ 주말 매출 비중</h2><span class="num">WEEKEND</span></div>
+        <div class="sub">주중 5일 vs 주말 2일 매출 비교</div>
+        <div class="metric-row"><span class="big">36.7%</span><span class="delta up">주말 집중</span></div>
+        <div class="chart-wrap"><canvas id="weekendChart"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>④ 연령대별 매출 비중</h2><span class="num">AGE MIX</span></div>
+        <div class="sub">가장 많은 비중: <b>20대 (31%)</b></div>
+        <div class="metric-row"><span class="big">31%</span><span class="delta up">20대 최다</span></div>
+        <div class="chart-wrap"><canvas id="ageChart"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>⑤ 유입 vs 로컬</h2><span class="num">INFLOW / LOCAL</span></div>
+        <div class="sub">유동인구 대비 타 지역 유입 / 거주지 인접(로컬)</div>
+        <div class="metric-row"><span class="big">유입 64%</span><span class="delta">로컬 36%</span></div>
+        <div class="chart-wrap"><canvas id="inflowChart"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 3: 심화 분석 (미사용 차트 유형) ═══════════ -->
+  <div class="tab-panel" id="tab-other">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">📍 강남역</span>
+        <span class="chip">2026 · Q1</span>
+        <span class="chip">업종·점포 단위</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span2">
+        <div class="card-head"><h2>⑥ 업종별 매출 비중</h2><span class="num">POLAR AREA</span></div>
+        <div class="sub">강남역 상권 업종 구성 (매출 기준)</div>
+        <div class="chart-wrap"><canvas id="categoryPolar"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>⑦ 결제수단 비중</h2><span class="num">PIE</span></div>
+        <div class="sub">간편결제 확산 추세</div>
+        <div class="chart-wrap"><canvas id="payPie"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>⑧ 업종 포지셔닝</h2><span class="num">BUBBLE</span></div>
+        <div class="sub">x 객단가 · y 재방문율 · 크기 점포수</div>
+        <div class="chart-wrap"><canvas id="posBubble"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>⑨ 임대료 vs 점포 매출</h2><span class="num">SCATTER</span></div>
+        <div class="sub">점포별 월 임대료(만원)와 월매출(백만원)의 상관 · 점포 30곳</div>
+        <div class="chart-wrap"><canvas id="rentScatter"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>⑩ 월별 매출 & 증감률</h2><span class="num">BAR + LINE</span></div>
+        <div class="sub">막대 매출(억) · 선 전년동월 대비 증감률(%) — 이중 축</div>
+        <div class="chart-wrap"><canvas id="comboChart"></canvas></div>
+      </section>
+      <section class="card span6">
+        <div class="card-head"><h2>⑪ 연령대별 1인 평균 소비금액</h2><span class="num">SPEND / CAPITA</span></div>
+        <div class="sub">1회 방문당 평균 결제금액(원) · 최다 지출: <b>40대 (63,000원)</b> · 평일/주말 비교</div>
+        <div class="chart-wrap"><canvas id="perCapitaBar"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 4: 인당 소비 (다양한 차트) ═══════════ -->
+  <div class="tab-panel" id="tab-percap">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">📍 강남역</span>
+        <span class="chip">2026 · Q1</span>
+        <span class="chip">1인 평균 소비금액 기준</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span4">
+        <div class="card-head"><h2>① 월별 인당 소비 추이</h2><span class="num">AREA</span></div>
+        <div class="sub">1인 평균 소비금액 12개월 추이 · 연말로 갈수록 증가</div>
+        <div class="chart-wrap"><canvas id="pcTrend"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>② 결제금액 구간 분포</h2><span class="num">DOUGHNUT</span></div>
+        <div class="sub">1회 결제금액대별 거래 비중</div>
+        <div class="chart-wrap"><canvas id="pcBand"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>③ 시간대별 인당 소비</h2><span class="num">BAR</span></div>
+        <div class="sub">시간대별 1인 평균 결제금액 · 저녁 최고</div>
+        <div class="chart-wrap"><canvas id="pcHour"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>④ 연령·성별 인당 소비</h2><span class="num">RADAR</span></div>
+        <div class="sub">연령대별 1인 소비금액 · 남/여 분리</div>
+        <div class="chart-wrap"><canvas id="pcAgeSex"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>⑤ 업종별 인당 소비</h2><span class="num">H-BAR</span></div>
+        <div class="sub">업종별 1인 평균 결제금액 (내림차순)</div>
+        <div class="chart-wrap"><canvas id="pcCategory"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>⑥ 업종 포지셔닝 (소비×방문)</h2><span class="num">BUBBLE</span></div>
+        <div class="sub">x 인당 소비금액 · y 월 방문횟수 · 크기 이용자수</div>
+        <div class="chart-wrap"><canvas id="pcBubble"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 5: 홍대입구 (인구↑·소비↓, 글 없이 그래프로) ═══════════ -->
+  <div class="tab-panel" id="tab-hongdae">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">🎈 홍대입구</span>
+        <span class="chip">서울 5대 상권 비교</span>
+        <span class="chip">2026 · Q1</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span3">
+        <div class="card-head"><h2>상권별 평균 유동인구</h2><span class="num">FOOT TRAFFIC</span></div>
+        <div class="sub">일 평균 유동인구 (만명)</div>
+        <div class="chart-wrap"><canvas id="hdPop"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>상권별 인당 소비금액</h2><span class="num">SPEND / CAPITA</span></div>
+        <div class="sub">1인 평균 결제금액 (원)</div>
+        <div class="chart-wrap"><canvas id="hdSpend"></canvas></div>
+      </section>
+      <section class="card span6">
+        <div class="card-head"><h2>유동인구 대비 인당 소비</h2><span class="num">SCATTER · 버블 크기 = 총매출</span></div>
+        <div class="sub">가로 유동인구(만명) · 세로 인당 소비금액(원)</div>
+        <div class="chart-wrap" style="min-height:320px"><canvas id="hdScatter"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 6: 홍대 · 백분율 (다른 상권 미표시, % 만) ═══════════ -->
+  <div class="tab-panel" id="tab-hongpct">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">🎈 홍대입구</span>
+        <span class="chip">서울 상권 내 백분위</span>
+        <span class="chip">2026 · Q1</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span2">
+        <div class="card-head"><h2>유동인구 백분위</h2><span class="num">GAUGE</span></div>
+        <div class="sub">서울 상권 중 홍대의 유동인구 순위</div>
+        <div class="chart-wrap"><canvas id="hpPop"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>인당 소비 백분위</h2><span class="num">GAUGE</span></div>
+        <div class="sub">서울 상권 중 홍대의 인당 소비 순위</div>
+        <div class="chart-wrap"><canvas id="hpSpend"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>지표 지수 비교</h2><span class="num">RADIAL</span></div>
+        <div class="sub">바깥 유동인구 · 안쪽 인당소비 (각 최고치 대비 %)</div>
+        <div class="chart-wrap"><canvas id="hpRing"></canvas></div>
+      </section>
+      <section class="card span6">
+        <div class="card-head"><h2>유동인구 → 소비 전환 퍼널</h2><span class="num">FUNNEL %</span></div>
+        <div class="sub">유동인구를 100%로 놓았을 때 단계별 비율</div>
+        <div class="chart-wrap"><canvas id="hpFunnel"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 7: 밤 vs 낮 매출 (다양한 표현) ═══════════ -->
+  <div class="tab-panel" id="tab-daynight">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">📍 강남역</span>
+        <span class="chip">낮 06–18 / 밤 18–06</span>
+        <span class="chip">2026 · Q1</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span6">
+        <div class="card-head"><h2>⭐ 밤 − 낮 매출 격차 (한눈에)</h2><span class="num">DIVERGING BAR · 0 기준</span></div>
+        <div class="sub">0 오른쪽 <b style="color:var(--purple)">밤 우세</b> · 왼쪽 <b style="color:var(--warn)">낮 우세</b> — 막대 길이 = 격차(%p)</div>
+        <div class="chart-wrap" style="min-height:230px"><canvas id="dnDiverge"></canvas></div>
+      </section>
+      <section class="card span4">
+        <div class="card-head"><h2>① 24시간 매출 곡선</h2><span class="num">AREA · 밤 구간 음영</span></div>
+        <div class="sub">시간대별 매출(억) · 보라 음영 구간이 밤(18–06)</div>
+        <div class="chart-wrap"><canvas id="dnHour"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>② 낮 vs 밤 비중</h2><span class="num">DOUGHNUT</span></div>
+        <div class="sub">전체 매출 구성</div>
+        <div class="chart-wrap"><canvas id="dnDonut"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>③ 요일별 낮/밤 매출</h2><span class="num">STACKED BAR</span></div>
+        <div class="sub">요일별 낮·밤 매출(억) · 금·토 밤 강세</div>
+        <div class="chart-wrap"><canvas id="dnWeek"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>④ 업종별 낮/밤 비중</h2><span class="num">100% H-BAR</span></div>
+        <div class="sub">업종별 낮·밤 매출 구성비 — 주점은 밤, 의료는 낮</div>
+        <div class="chart-wrap"><canvas id="dnCat"></canvas></div>
+      </section>
+      <section class="card span2">
+        <div class="card-head"><h2>⑤ 시간블록별 매출</h2><span class="num">POLAR AREA</span></div>
+        <div class="sub">하루 6개 시간블록 매출 강도</div>
+        <div class="chart-wrap"><canvas id="dnPolar"></canvas></div>
+      </section>
+      <section class="card span4">
+        <div class="card-head"><h2>⑥ 요일 × 시간대 히트맵</h2><span class="num">HEATMAP</span></div>
+        <div class="sub">색이 진할수록 매출 높음 · 저녁·심야가 금·토에 집중</div>
+        <div class="chart-wrap"><div id="dnHeat" class="heat"></div></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 8: 화제성 gap (인식 vs 실측) ═══════════ -->
+  <div class="tab-panel" id="tab-buzzgap">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">🔍 화제성 gap</span>
+        <span class="chip">업종: 음식점</span>
+        <span class="chip">검색 화제성 vs 실측 백분위</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span6">
+        <div class="card-head"><h2>⭐ 화제성 → 실측 소비 격차 (덤벨)</h2><span class="num">DUMBBELL</span></div>
+        <div class="sub"><b style="color:var(--muted)">●</b> 검색 화제성 &nbsp; <b style="color:var(--cyan)">●</b> 실측 인당매출 백분위 — 선이 길수록 <b style="color:var(--green)">저평가된 실속</b></div>
+        <div class="chart-wrap" style="min-height:230px"><canvas id="bgDumbbell"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>인식 = 실제 사분면</h2><span class="num">SCATTER</span></div>
+        <div class="sub">대각선 위로 멀수록 숨은 실속 · x 화제성 · y 인당매출 백분위</div>
+        <div class="chart-wrap"><canvas id="bgScatter"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>소비 gap</h2><span class="num">DIVERGING BAR</span></div>
+        <div class="sub">0 왼쪽 <b style="color:var(--green)">저평가(실속)</b> · 오른쪽 <b style="color:#ef4444">거품</b> · 화제성 − 실측(%p)</div>
+        <div class="chart-wrap"><canvas id="bgGap"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <!-- ═══════════ 탭 9: 숨은 오피스 상권 (gap + 오피스 신호) ═══════════ -->
+  <div class="tab-panel" id="tab-office">
+    <div class="panel-meta">
+      <div class="filters">
+        <span class="chip active">🏢 숨은 오피스</span>
+        <span class="chip">업종: 음식점</span>
+        <span class="chip">gap + 점심·평일 프록시</span>
+      </div>
+    </div>
+    <main class="grid">
+      <section class="card span6">
+        <div class="card-head"><h2>⭐ 숨은 실속존 × 상권 유형</h2><span class="num">SCATTER</span></div>
+        <div class="sub">위치 = 화제성↓·소비↑(숨은 실속) · 색 = 상권 유형 <b style="color:var(--accent)">●오피스</b> <b style="color:var(--pink)">●관광</b> <b style="color:var(--muted)">●복합</b></div>
+        <div class="chart-wrap" style="min-height:250px"><canvas id="ofScatter"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>오피스 지수 (프록시)</h2><span class="num">BAR</span></div>
+        <div class="sub">점심(11–14) 매출 비중 · 평일 유동 편중 — 여의도 최상위</div>
+        <div class="chart-wrap"><canvas id="ofProxy"></canvas></div>
+      </section>
+      <section class="card span3">
+        <div class="card-head"><h2>24시간 매출 지문</h2><span class="num">LINE</span></div>
+        <div class="sub"><b style="color:var(--accent)">여의도</b> 점심 스파이크·저녁 급락 vs <b style="color:var(--pink)">명동</b> 저녁 피크</div>
+        <div class="chart-wrap"><canvas id="ofFingerprint"></canvas></div>
+      </section>
+    </main>
+  </div>
+
+  <footer>
+    * 본 페이지는 목(mock) 데이터로 구성된 시각화 데모입니다. 실제 서비스 값이 아닙니다. · CommercialRadar
+  </footer>
+
+<script>
+  const C = { accent:"#4f8cff", green:"#22c55e", warn:"#f59e0b", pink:"#ec4899", purple:"#a855f7", cyan:"#06b6d4", muted:"#8b98a9", grid:"#2c3846", text:"#e6edf3" };
+  Chart.defaults.color = C.muted;
+  Chart.defaults.font.family = "Pretendard, sans-serif";
+  Chart.defaults.font.size = 11;
+  const legendBottom = { position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:12, color:C.text } };
+  const gridX = { grid:{ color:C.grid, drawTicks:false }, border:{ color:C.grid } };
+  const gridY = { grid:{ color:C.grid, drawTicks:false }, border:{ color:C.grid } };
+
+  // 도넛/게이지 중앙 텍스트 플러그인
+  const centerText = {
+    id: "centerText",
+    afterDraw(chart, args, opts) {
+      if (!opts || !opts.text) return;
+      const { ctx } = chart;
+      const arc = chart.getDatasetMeta(0).data[0];
+      if (!arc) return;
+      ctx.save();
+      ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillStyle = opts.color || C.text;
+      ctx.font = "700 30px Pretendard, sans-serif";
+      ctx.fillText(opts.text, arc.x, arc.y - (opts.dy || 0));
+      if (opts.label) { ctx.fillStyle = C.muted; ctx.font = "600 11px Pretendard, sans-serif"; ctx.fillText(opts.label, arc.x, arc.y - (opts.dy||0) + 22); }
+      ctx.restore();
+    },
+  };
+  Chart.register(centerText);
+
+  // ══════════ 탭 1: 강남역 ══════════
+  function buildGangnam() {
+    new Chart(document.getElementById("foreignGauge"), {
+      type: "doughnut",
+      data: { labels:["외국인","내국인"], datasets:[{ data:[21.3, 78.7], backgroundColor:[C.pink, "#2c3846"], borderWidth:0, circumference:180, rotation:270 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"72%", layout:{ padding:{ bottom:10 } },
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } }, centerText:{ text:"21.3%", label:"외국인 비중", color:C.pink, dy:-10 } } },
+    });
+
+    const hours = Array.from({length:24}, (_,h)=> `${String(h).padStart(2,"0")}시`);
+    const hourly = [8,5,3,2,2,3,9,22,38,44,52,71,86,74,63,58,66,79,95,88,74,60,42,22];
+    const ctxH = document.getElementById("hourArea").getContext("2d");
+    const grad = ctxH.createLinearGradient(0,0,0,240); grad.addColorStop(0,"#f59e0b66"); grad.addColorStop(1,"#f59e0b00");
+    new Chart(ctxH, {
+      type: "line",
+      data: { labels:hours, datasets:[{ label:"시간대별 매출(억)", data:hourly, borderColor:C.warn, backgroundColor:grad, fill:true, tension:0.4, borderWidth:2, pointRadius:0, pointHoverRadius:4,
+        segment:{ borderColor:(c)=> (c.p0.parsed.x>=18 || c.p0.parsed.x<6) ? C.purple : C.warn } }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.y}억` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false }, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8 } }, y:{ ...gridY, ticks:{ callback:(v)=> v+"억" } } } },
+    });
+
+    const days = ["월","화","수","목","금","토","일"]; const dayVal = [128,131,126,140,168,152,141];
+    new Chart(document.getElementById("weekdayBar"), {
+      type: "bar",
+      data: { labels:days, datasets:[{ label:"매출(억)", data:dayVal, backgroundColor: dayVal.map((_,i)=> i>=5 ? C.green : "#3a4757"), borderRadius:6, barPercentage:0.7 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.y}억${c.dataIndex>=5?" · 주말":""}` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> v+"억" } } } },
+    });
+
+    new Chart(document.getElementById("ageRadar"), {
+      type: "radar",
+      data: { labels:["10대","20대","30대","40대","50대","60대+"], datasets:[
+        { label:"여성", data:[7,35,29,16,9,4], borderColor:C.pink, backgroundColor:"#ec489933", pointBackgroundColor:C.pink, borderWidth:2 },
+        { label:"남성", data:[5,31,28,20,13,7], borderColor:C.accent, backgroundColor:"#4f8cff2e", pointBackgroundColor:C.accent, borderWidth:2 } ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label} ${c.label}: ${c.parsed.r}%` } } },
+        scales:{ r:{ angleLines:{ color:C.grid }, grid:{ color:C.grid }, pointLabels:{ color:C.text, font:{ size:12 } }, ticks:{ display:false, maxTicksLimit:5 }, suggestedMin:0, suggestedMax:36 } } },
+    });
+
+    new Chart(document.getElementById("inflowDonut"), {
+      type: "doughnut",
+      data: { labels:["유입","로컬"], datasets:[{ data:[68, 32], backgroundColor:[C.cyan, "#3a4757"], borderColor:"#1a212b", borderWidth:3, hoverOffset:6 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"66%",
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } }, centerText:{ text:"68%", label:"유입", color:C.cyan } } },
+    });
+
+    new Chart(document.getElementById("originBar"), {
+      type: "bar",
+      data: { labels:["서초구","송파구","분당·판교","관악구","성남 외 경기"], datasets:[{ label:"유입(천명/일)", data:[42,31,27,19,15], backgroundColor:[C.cyan,C.cyan+"cc",C.cyan+"aa",C.cyan+"88",C.cyan+"66"], borderRadius:5, barPercentage:0.72 }] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.x}천명/일` } } },
+        scales:{ x:{ ...gridX, ticks:{ callback:(v)=> v+"k" } }, y:{ ...gridY, grid:{ display:false } } } },
+    });
+  }
+
+  // ══════════ 탭 2: 전체 상권 비교 ══════════
+  function buildAll() {
+    const DISTRICTS = ["강남역","홍대입구","명동","성수동","여의도"];
+    new Chart(document.getElementById("foreignChart"), {
+      type: "doughnut",
+      data: { labels:["외국인","내국인"], datasets:[{ data:[18.4, 81.6], backgroundColor:[C.pink, "#2c3846"], borderColor:"#1a212b", borderWidth:3, hoverOffset:6 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"68%",
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } } } },
+    });
+
+    new Chart(document.getElementById("dayNightChart"), {
+      type: "bar",
+      data: { labels:DISTRICTS, datasets:[
+        { label:"낮 (06–18)", data:[62,41,68,48,74], backgroundColor:C.warn, borderRadius:5, barPercentage:0.7 },
+        { label:"밤 (18–06)", data:[38,59,32,52,26], backgroundColor:C.purple, borderRadius:5, barPercentage:0.7 } ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label}: ${c.parsed.y}%` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, max:100, ticks:{ callback:(v)=> v+"%" } } } },
+    });
+
+    new Chart(document.getElementById("weekendChart"), {
+      type: "doughnut",
+      data: { labels:["주말 (토·일)","주중 (월–금)"], datasets:[{ data:[36.7, 63.3], backgroundColor:[C.green, "#2c3846"], borderColor:"#1a212b", borderWidth:3, hoverOffset:6 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"62%", rotation:-90, circumference:180,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } } } },
+    });
+
+    const ageData = [6,31,27,18,12,6];
+    new Chart(document.getElementById("ageChart"), {
+      type: "bar",
+      data: { labels:["10대","20대","30대","40대","50대","60대+"], datasets:[{ label:"매출 비중", data:ageData, backgroundColor: ageData.map((_,i)=> i===1 ? C.accent : "#3a4757"), borderRadius:5, barPercentage:0.72 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.y}%` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> v+"%" } } } },
+    });
+
+    new Chart(document.getElementById("inflowChart"), {
+      type: "bar",
+      data: { labels:DISTRICTS, datasets:[
+        { label:"유입", data:[98,71,120,55,62], backgroundColor:C.cyan, borderRadius:4, barPercentage:0.75 },
+        { label:"로컬", data:[42,46,34,47,40], backgroundColor:"#3a4757", borderRadius:4, barPercentage:0.75 } ] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label}: ${c.parsed.x}천명` } } },
+        scales:{ x:{ ...gridX, stacked:true, ticks:{ callback:(v)=> v+"k" } }, y:{ ...gridY, stacked:true, grid:{ display:false } } } },
+    });
+  }
+
+  // ══════════ 탭 3: 심화 분석 (미사용 차트 유형) ══════════
+  function buildOther() {
+    // ⑥ Polar Area — 업종별 매출 비중
+    new Chart(document.getElementById("categoryPolar"), {
+      type: "polarArea",
+      data: { labels:["음식점","카페·디저트","패션·의류","뷰티·헬스","생활서비스","의료"],
+        datasets:[{ data:[34,21,15,12,10,8], backgroundColor:[C.warn+"cc",C.pink+"cc",C.accent+"cc",C.purple+"cc",C.green+"cc",C.cyan+"cc"], borderColor:"#1a212b", borderWidth:2 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed.r}%` } } },
+        scales:{ r:{ grid:{ color:C.grid }, angleLines:{ color:C.grid }, ticks:{ display:false, backdropColor:"transparent" } } } },
+    });
+
+    // ⑦ Pie — 결제수단 비중
+    new Chart(document.getElementById("payPie"), {
+      type: "pie",
+      data: { labels:["간편결제","실물카드","현금","기타"],
+        datasets:[{ data:[47,38,10,5], backgroundColor:[C.accent,C.cyan,"#3a4757",C.warn], borderColor:"#1a212b", borderWidth:2, hoverOffset:6 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } } } },
+    });
+
+    // ⑧ Bubble — 업종 포지셔닝 (x 객단가만원, y 재방문율%, r 점포수)
+    const bub = [
+      { l:"음식점",      x:2.4, y:38, r:210 },
+      { l:"카페·디저트", x:1.2, y:52, r:180 },
+      { l:"패션·의류",   x:6.8, y:24, r:95  },
+      { l:"뷰티·헬스",   x:4.5, y:44, r:120 },
+      { l:"생활서비스",  x:3.1, y:30, r:70  },
+      { l:"의료",        x:9.2, y:34, r:55  },
+    ];
+    const bubColor = [C.warn,C.pink,C.accent,C.purple,C.green,C.cyan];
+    new Chart(document.getElementById("posBubble"), {
+      type: "bubble",
+      data: { datasets: bub.map((b,i)=>({ label:b.l, data:[{ x:b.x, y:b.y, r:Math.sqrt(b.r)*1.4 }], backgroundColor:bubColor[i]+"aa", borderColor:bubColor[i], borderWidth:1.5 })) },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:9, boxHeight:9, padding:8, color:C.text, font:{ size:10 } } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label} · 객단가 ${c.raw.x}만원 · 재방문 ${c.raw.y}%` } } },
+        scales:{ x:{ ...gridX, title:{ display:true, text:"평균 객단가(만원)", color:C.muted }, ticks:{ callback:(v)=> v+"만" } },
+          y:{ ...gridY, title:{ display:true, text:"재방문율(%)", color:C.muted }, ticks:{ callback:(v)=> v+"%" } } } },
+    });
+
+    // ⑨ Scatter — 임대료 vs 매출 (양의 상관, mock 30점)
+    const pts = [
+      [180,42],[210,55],[150,38],[320,88],[260,71],[190,49],[240,63],[300,80],[170,40],[220,58],
+      [280,74],[350,95],[160,35],[200,52],[250,66],[330,86],[290,77],[230,60],[210,50],[270,70],
+      [310,83],[185,45],[245,64],[295,79],[205,54],[265,68],[340,90],[175,41],[225,57],[285,73],
+    ].map(([x,y])=>({ x, y }));
+    new Chart(document.getElementById("rentScatter"), {
+      type: "scatter",
+      data: { datasets:[{ label:"점포", data:pts, backgroundColor:C.green+"cc", borderColor:C.green, pointRadius:5, pointHoverRadius:7 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` 임대료 ${c.parsed.x}만 · 매출 ${c.parsed.y}백만` } } },
+        scales:{ x:{ ...gridX, title:{ display:true, text:"월 임대료(만원)", color:C.muted } }, y:{ ...gridY, title:{ display:true, text:"월 매출(백만원)", color:C.muted } } } },
+    });
+
+    // ⑩ Bar + Line 콤보 — 월별 매출 & 증감률 (이중 축)
+    const months = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+    new Chart(document.getElementById("comboChart"), {
+      data: {
+        labels: months,
+        datasets: [
+          { type:"bar", label:"매출(억)", data:[142,131,150,148,163,158,155,149,167,175,182,201], backgroundColor:C.accent+"bb", borderRadius:5, yAxisID:"y", order:2 },
+          { type:"line", label:"전년비 증감률(%)", data:[3.1,-1.2,4.5,2.0,6.8,4.1,3.3,1.8,7.2,8.0,9.1,12.4], borderColor:C.warn, backgroundColor:C.warn, tension:0.35, borderWidth:2, pointRadius:3, yAxisID:"y1", order:1 },
+        ],
+      },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ mode:"index", intersect:false } },
+        scales:{
+          x:{ ...gridX, grid:{ display:false } },
+          y:{ ...gridY, position:"left", ticks:{ callback:(v)=> v+"억" } },
+          y1:{ position:"right", grid:{ drawOnChartArea:false, color:C.grid }, border:{ color:C.grid }, ticks:{ callback:(v)=> v+"%" } },
+        } },
+    });
+
+    // ⑪ 연령대별 1인 평균 소비금액 — 평일/주말 그룹 막대
+    const won = (v)=> v.toLocaleString("ko-KR") + "원";
+    new Chart(document.getElementById("perCapitaBar"), {
+      type: "bar",
+      data: { labels:["10대","20대","30대","40대","50대","60대+"],
+        datasets:[
+          { label:"평일", data:[16000,38000,54000,59000,47000,36000], backgroundColor:"#3a4757", borderRadius:5, barPercentage:0.8 },
+          { label:"주말", data:[21000,47000,61000,67000,54000,42000], backgroundColor:C.accent, borderRadius:5, barPercentage:0.8 },
+        ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label}: ${won(c.parsed.y)}` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> (v/1000)+"천원" } } } },
+    });
+  }
+
+  // ══════════ 탭 4: 인당 소비 (다양한 차트) ══════════
+  function buildPercap() {
+    const kw = (v)=> (v/1000).toLocaleString("ko-KR") + "천원";  // 천원 표기
+    const won = (v)=> v.toLocaleString("ko-KR") + "원";
+
+    // ① 월별 인당 소비 추이 — Area
+    const months = ["1월","2월","3월","4월","5월","6월","7월","8월","9월","10월","11월","12월"];
+    const ctxT = document.getElementById("pcTrend").getContext("2d");
+    const g = ctxT.createLinearGradient(0,0,0,240); g.addColorStop(0,"#06b6d466"); g.addColorStop(1,"#06b6d400");
+    new Chart(ctxT, {
+      type: "line",
+      data: { labels:months, datasets:[{ label:"인당 소비금액", data:[41000,40000,43000,45500,44000,47000,46000,45000,49000,51500,50000,55000],
+        borderColor:C.cyan, backgroundColor:g, fill:true, tension:0.4, borderWidth:2, pointRadius:0, pointHoverRadius:4 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${won(c.parsed.y)}` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> (v/1000)+"천원" } } } },
+    });
+
+    // ② 결제금액 구간 분포 — Doughnut
+    new Chart(document.getElementById("pcBand"), {
+      type: "doughnut",
+      data: { labels:["~1만원","1–3만원","3–5만원","5–10만원","10만원+"],
+        datasets:[{ data:[12,28,25,22,13], backgroundColor:[C.green,C.cyan,C.accent,C.purple,C.pink], borderColor:"#1a212b", borderWidth:3, hoverOffset:6 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"58%",
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:9, boxHeight:9, padding:8, color:C.text, font:{ size:10 } } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } } } },
+    });
+
+    // ③ 시간대별 인당 소비 — Bar
+    new Chart(document.getElementById("pcHour"), {
+      type: "bar",
+      data: { labels:["새벽","아침","점심","오후","저녁","심야"],
+        datasets:[{ label:"인당 소비", data:[22000,31000,58000,44000,67000,39000],
+          backgroundColor:["#3a4757","#3a4757",C.accent,"#3a4757",C.warn,"#3a4757"], borderRadius:6, barPercentage:0.7 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${won(c.parsed.y)}` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> (v/1000)+"천" } } } },
+    });
+
+    // ④ 연령·성별 인당 소비 — Radar
+    new Chart(document.getElementById("pcAgeSex"), {
+      type: "radar",
+      data: { labels:["10대","20대","30대","40대","50대","60대+"], datasets:[
+        { label:"여성", data:[22000,48000,55000,59000,47000,36000], borderColor:C.pink, backgroundColor:"#ec489933", pointBackgroundColor:C.pink, borderWidth:2 },
+        { label:"남성", data:[18000,42000,58000,63000,52000,40000], borderColor:C.accent, backgroundColor:"#4f8cff2e", pointBackgroundColor:C.accent, borderWidth:2 } ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend: legendBottom, tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label} ${c.label}: ${won(c.parsed.r)}` } } },
+        scales:{ r:{ angleLines:{ color:C.grid }, grid:{ color:C.grid }, pointLabels:{ color:C.text, font:{ size:12 } }, ticks:{ display:false }, suggestedMin:0, suggestedMax:66000 } } },
+    });
+
+    // ⑤ 업종별 인당 소비 — 가로 Bar
+    new Chart(document.getElementById("pcCategory"), {
+      type: "bar",
+      data: { labels:["의료","패션·의류","뷰티·헬스","음식점","생활서비스","카페·디저트"],
+        datasets:[{ label:"인당 소비", data:[92000,68000,55000,34000,31000,18000],
+          backgroundColor:[C.cyan,C.cyan+"dd",C.cyan+"bb",C.cyan+"99",C.cyan+"77",C.cyan+"55"], borderRadius:5, barPercentage:0.72 }] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${won(c.parsed.x)}` } } },
+        scales:{ x:{ ...gridX, ticks:{ callback:(v)=> (v/1000)+"천" } }, y:{ ...gridY, grid:{ display:false } } } },
+    });
+
+    // ⑥ 업종 포지셔닝 — Bubble (x 인당소비, y 월방문, r 이용자수)
+    const bub = [
+      { l:"음식점",      x:34, y:5.2, r:210 },
+      { l:"카페·디저트", x:18, y:8.1, r:190 },
+      { l:"패션·의류",   x:68, y:1.6, r:90  },
+      { l:"뷰티·헬스",   x:55, y:2.4, r:120 },
+      { l:"생활서비스",  x:31, y:3.0, r:75  },
+      { l:"의료",        x:92, y:1.1, r:50  },
+    ];
+    const col = [C.warn,C.pink,C.accent,C.purple,C.green,C.cyan];
+    new Chart(document.getElementById("pcBubble"), {
+      type: "bubble",
+      data: { datasets: bub.map((b,i)=>({ label:b.l, data:[{ x:b.x, y:b.y, r:Math.sqrt(b.r)*1.4 }], backgroundColor:col[i]+"aa", borderColor:col[i], borderWidth:1.5 })) },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:9, boxHeight:9, padding:8, color:C.text, font:{ size:10 } } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label} · 인당 ${c.raw.x}천원 · 월 ${c.raw.y}회` } } },
+        scales:{ x:{ ...gridX, title:{ display:true, text:"인당 소비금액(천원)", color:C.muted }, ticks:{ callback:(v)=> v+"천" } },
+          y:{ ...gridY, title:{ display:true, text:"월 방문횟수", color:C.muted }, ticks:{ callback:(v)=> v+"회" } } } },
+    });
+  }
+
+  // ══════════ 탭 5: 홍대입구 (인구↑·소비↓, 그래프로만) ══════════
+  function buildHongdae() {
+    const D = ["홍대입구","강남역","명동","여의도","성수동"];
+    const HL = 0;                       // 홍대 = 첫 번째, 강조 대상
+    const won = (v)=> v.toLocaleString("ko-KR") + "원";
+    // 홍대만 핑크로 강조, 나머지는 회색 → 세 차트에서 시선이 홍대를 추적
+    const barColors = (arr, base) => arr.map((_,i)=> i===HL ? C.pink : base);
+
+    const pop   = [68, 55, 42, 38, 30];        // 평균 유동인구(만명) — 홍대 최다
+    const spend = [22000, 52000, 61000, 58000, 45000]; // 인당 소비(원) — 홍대 최저
+
+    // ① 상권별 평균 유동인구 — 막대 (홍대 최고 & 강조)
+    new Chart(document.getElementById("hdPop"), {
+      type: "bar",
+      data: { labels:D, datasets:[{ label:"유동인구(만명)", data:pop, backgroundColor:barColors(pop,"#3a4757"), borderRadius:6, barPercentage:0.7 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.y}만명/일` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> v+"만" } } } },
+    });
+
+    // ② 상권별 인당 소비금액 — 막대 (홍대 최저 & 강조)
+    new Chart(document.getElementById("hdSpend"), {
+      type: "bar",
+      data: { labels:D, datasets:[{ label:"인당 소비(원)", data:spend, backgroundColor:barColors(spend,"#3a4757"), borderRadius:6, barPercentage:0.7 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${won(c.parsed.y)}` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, ticks:{ callback:(v)=> (v/1000)+"천원" } } } },
+    });
+
+    // ③ 유동인구 × 인당 소비 — 산점(버블). 홍대는 우하단(인구↑·소비↓)에 홀로
+    const total = pop.map((p,i)=> p * (spend[i]/1000));   // 총매출 프록시
+    const ds = D.map((name,i)=>({
+      label: name,
+      data: [{ x:pop[i], y:spend[i], r:Math.sqrt(total[i])*0.9 }],
+      backgroundColor: (i===HL ? C.pink : "#5b6b7d") + "cc",
+      borderColor: i===HL ? C.pink : "#7e8ea0",
+      borderWidth: i===HL ? 2.5 : 1.5,
+    }));
+    new Chart(document.getElementById("hdScatter"), {
+      type: "bubble",
+      data: { datasets: ds },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label} · 유동 ${c.raw.x}만명 · 인당 ${won(c.raw.y)}` } } },
+        scales:{
+          x:{ ...gridX, title:{ display:true, text:"평균 유동인구 (만명/일) →", color:C.muted }, ticks:{ callback:(v)=> v+"만" }, suggestedMin:20, suggestedMax:75 },
+          y:{ ...gridY, title:{ display:true, text:"인당 소비금액 (원) →", color:C.muted }, ticks:{ callback:(v)=> (v/1000)+"천" }, suggestedMin:15000, suggestedMax:68000 },
+        } },
+    });
+  }
+
+  // ══════════ 탭 6: 홍대 · 백분율 (다른 상권 미표시, %만) ══════════
+  function buildHongPct() {
+    // 반원 게이지 (value = 채움 %)
+    const gauge = (id, value, fill, centerTxt, centerLabel) => new Chart(document.getElementById(id), {
+      type: "doughnut",
+      data: { labels:["", ""], datasets:[{ data:[value, 100-value], backgroundColor:[fill, "#2c3846"], borderWidth:0, circumference:180, rotation:270 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"72%", layout:{ padding:{ bottom:8 } },
+        plugins:{ legend:{ display:false }, tooltip:{ enabled:false }, centerText:{ text:centerTxt, label:centerLabel, color:fill, dy:-8 } } },
+    });
+
+    // ① 유동인구 백분위 — 상위 4% (게이지 거의 꽉 참)
+    gauge("hpPop", 96, C.pink, "상위 4%", "유동인구 백분위");
+    // ② 인당소비 백분위 — 하위 21% (게이지 거의 빔)
+    gauge("hpSpend", 21, C.cyan, "하위 21%", "인당소비 백분위");
+
+    // ③ 지표 지수 비교 — 이중 링(라디얼): 바깥 유동인구, 안쪽 소비
+    new Chart(document.getElementById("hpRing"), {
+      type: "doughnut",
+      data: { labels:["채움","여백"], datasets:[
+        { label:"인당소비", data:[24, 76], backgroundColor:[C.cyan, "#2c3846"], borderWidth:0, weight:1 },  // 안쪽 링
+        { label:"유동인구", data:[96, 4],  backgroundColor:[C.pink, "#2c3846"], borderWidth:0, weight:1 },  // 바깥 링
+      ] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"40%",
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text } },
+          tooltip:{ callbacks:{ label:(c)=> c.dataIndex===0 ? ` ${c.dataset.label}: ${c.parsed}%` : null } } } },
+    });
+
+    // ④ 유동인구 → 소비 전환 퍼널 (가로 막대, %) — 가파른 감소
+    const stages = ["유동인구","매장 유입","결제 발생","고액 결제"];
+    const pct    = [100, 32, 17, 6];
+    new Chart(document.getElementById("hpFunnel"), {
+      type: "bar",
+      data: { labels:stages, datasets:[{ label:"비율(%)", data:pct,
+        backgroundColor:[C.pink, C.purple, C.accent, C.cyan], borderRadius:6, barPercentage:0.72 }] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.x}%` } } },
+        scales:{ x:{ ...gridX, max:100, ticks:{ callback:(v)=> v+"%" } }, y:{ ...gridY, grid:{ display:false } } } },
+    });
+  }
+
+  // ══════════ 탭 7: 밤 vs 낮 매출 (다양한 표현) ══════════
+  function buildDayNight() {
+    const DAY = C.warn, NIGHT = C.purple;
+
+    // ⭐ 밤 − 낮 격차 — 0 기준 다이버징 가로막대 (한눈에)
+    // 업종별 (밤% − 낮%) 격차. 양수=밤 우세(오른쪽·보라), 음수=낮 우세(왼쪽·주황)
+    const dvLabels = ["주점·유흥","음식점","패션·의류","카페·디저트","생활서비스","의료"];
+    const dvGap    = [76, -10, -36, -44, -56, -80];  // 밤% − 낮% (%p)
+    new Chart(document.getElementById("dnDiverge"), {
+      type: "bar",
+      data: { labels:dvLabels, datasets:[{ label:"밤 − 낮 격차(%p)", data:dvGap,
+        backgroundColor: dvGap.map(v=> v>=0 ? NIGHT : DAY), borderRadius:5, barPercentage:0.72 }] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false },
+          tooltip:{ callbacks:{ label:(c)=> (c.parsed.x>=0 ? ` 밤 우세 +${c.parsed.x}%p` : ` 낮 우세 ${c.parsed.x}%p`) } } },
+        scales:{
+          x:{ ...gridX, min:-100, max:100, grid:{ color:(ctx)=> ctx.tick.value===0 ? C.muted : C.grid, lineWidth:(ctx)=> ctx.tick.value===0 ? 1.5 : 1 }, ticks:{ callback:(v)=> (v>0?"밤 +":v<0?"낮 ":"")+Math.abs(v)+(v!==0?"%p":"") } },
+          y:{ ...gridY, grid:{ display:false } },
+        } },
+    });
+
+    // ① 24시간 매출 곡선 + 밤 구간 음영(인라인 플러그인)
+    const hours = Array.from({length:24}, (_,h)=> `${String(h).padStart(2,"0")}시`);
+    const hourly = [8,5,3,2,2,3,9,22,38,44,52,71,86,74,63,58,66,79,95,88,74,60,42,22];
+    const ctxH = document.getElementById("dnHour").getContext("2d");
+    const grad = ctxH.createLinearGradient(0,0,0,240); grad.addColorStop(0,"#f59e0b55"); grad.addColorStop(1,"#f59e0b00");
+    const nightBand = {
+      id: "nightBand",
+      beforeDatasetsDraw(chart) {
+        const { ctx, chartArea:{ top, bottom, left, right }, scales:{ x } } = chart;
+        const p6 = x.getPixelForValue(6), p18 = x.getPixelForValue(18);
+        ctx.save(); ctx.fillStyle = "#a855f71a";
+        ctx.fillRect(left, top, p6 - left, bottom - top);   // 00–06
+        ctx.fillRect(p18, top, right - p18, bottom - top);  // 18–24
+        ctx.restore();
+      },
+    };
+    new Chart(ctxH, {
+      type: "line",
+      data: { labels:hours, datasets:[{ label:"매출(억)", data:hourly, borderColor:DAY, backgroundColor:grad, fill:true, tension:0.4, borderWidth:2, pointRadius:0, pointHoverRadius:4,
+        segment:{ borderColor:(c)=> (c.p0.parsed.x>=18 || c.p0.parsed.x<6) ? NIGHT : DAY } }] },
+      plugins: [nightBand],
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>` ${c.parsed.y}억` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false }, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8 } }, y:{ ...gridY, ticks:{ callback:(v)=> v+"억" } } } },
+    });
+
+    // ② 낮 vs 밤 비중 — 도넛
+    new Chart(document.getElementById("dnDonut"), {
+      type: "doughnut",
+      data: { labels:["낮 (06–18)","밤 (18–06)"], datasets:[{ data:[54, 46], backgroundColor:[DAY, NIGHT], borderColor:"#1a212b", borderWidth:3, hoverOffset:6 }] },
+      options: { responsive:true, maintainAspectRatio:false, cutout:"62%",
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed}%` } }, centerText:{ text:"46%", label:"밤 매출", color:NIGHT } } },
+    });
+
+    // ③ 요일별 낮/밤 매출 — 누적 막대
+    const days = ["월","화","수","목","금","토","일"];
+    new Chart(document.getElementById("dnWeek"), {
+      type: "bar",
+      data: { labels:days, datasets:[
+        { label:"낮", data:[72,74,71,78,82,70,66], backgroundColor:DAY, borderRadius:{ topLeft:0, topRight:0 }, barPercentage:0.7, stack:"s" },
+        { label:"밤", data:[48,50,52,58,86,95,72], backgroundColor:NIGHT, borderRadius:5, barPercentage:0.7, stack:"s" },
+      ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label}: ${c.parsed.y}억` } } },
+        scales:{ x:{ ...gridX, stacked:true, grid:{ display:false } }, y:{ ...gridY, stacked:true, ticks:{ callback:(v)=> v+"억" } } } },
+    });
+
+    // ④ 업종별 낮/밤 비중 — 100% 누적 가로막대
+    new Chart(document.getElementById("dnCat"), {
+      type: "bar",
+      data: { labels:["의료","생활서비스","카페·디저트","패션·의류","음식점","주점·유흥"], datasets:[
+        { label:"낮", data:[90,78,72,68,55,12], backgroundColor:DAY, barPercentage:0.75, stack:"s" },
+        { label:"밤", data:[10,22,28,32,45,88], backgroundColor:NIGHT, barPercentage:0.75, stack:"s" },
+      ] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label}: ${c.parsed.x}%` } } },
+        scales:{ x:{ ...gridX, stacked:true, max:100, ticks:{ callback:(v)=> v+"%" } }, y:{ ...gridY, stacked:true, grid:{ display:false } } } },
+    });
+
+    // ⑤ 시간블록별 매출 — 극좌표(폴라)
+    new Chart(document.getElementById("dnPolar"), {
+      type: "polarArea",
+      data: { labels:["새벽","아침","점심","오후","저녁","심야"],
+        datasets:[{ data:[12,40,86,70,88,45], backgroundColor:["#a855f7aa","#f59e0baa","#f59e0bcc","#f59e0baa",NIGHT+"cc",NIGHT+"aa"], borderColor:"#1a212b", borderWidth:2 }] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:9, boxHeight:9, padding:7, color:C.text, font:{ size:10 } } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.label}: ${c.parsed.r}억` } } },
+        scales:{ r:{ grid:{ color:C.grid }, angleLines:{ color:C.grid }, ticks:{ display:false, backdropColor:"transparent" } } } },
+    });
+
+    // ⑥ 요일 × 시간대 히트맵 — CSS 그리드
+    const blocks = ["새벽","아침","점심","오후","저녁","심야"];
+    const heatDays = ["월","화","수","목","금","토","일"];
+    const heat = [
+      [10,10,12,14,20,28,18],  // 새벽
+      [45,46,44,48,50,30,26],  // 아침
+      [80,82,80,84,88,70,64],  // 점심
+      [66,68,66,70,74,72,60],  // 오후
+      [70,72,74,80,92,96,78],  // 저녁
+      [30,32,34,42,80,88,50],  // 심야
+    ];
+    const cellBg = (v)=> `rgba(79,140,255,${(0.10 + v/100 * 0.82).toFixed(2)})`;
+    let html = `<div class="hh"></div>` + heatDays.map(d=> `<div class="hh">${d}</div>`).join("");
+    blocks.forEach((b,r)=>{
+      html += `<div class="hr">${b}</div>`;
+      heat[r].forEach(v=>{ html += `<div class="hc" style="background:${cellBg(v)}">${v}</div>`; });
+    });
+    document.getElementById("dnHeat").innerHTML = html;
+  }
+
+  // ══════════ 탭 8: 화제성 gap (인식 vs 실측) ══════════
+  function buildBuzzGap() {
+    // 업종=음식점 고정. buzz=검색 화제성(0~100), spend=인당매출 백분위(%), gap=buzz−spend
+    const rows = [
+      { name:"강남역",   buzz:100, spend:91, gap:9 },
+      { name:"명동",     buzz:25,  spend:92, gap:-67 },
+      { name:"여의도역", buzz:26,  spend:96, gap:-70 },
+    ];
+    const names = rows.map(r=>r.name);
+    const BUZZ = C.muted, REAL = C.cyan;
+
+    // ⭐ 덤벨 — 화제성 점과 실측 점을 잇는 플로팅 바 + 끝점 원
+    const dumbDots = {
+      id: "dumbDots",
+      afterDatasetsDraw(chart) {
+        const { ctx, scales:{ x } } = chart;
+        const meta = chart.getDatasetMeta(0);
+        rows.forEach((r,i)=>{
+          const y = meta.data[i].y;
+          const dot = (px, color) => { ctx.beginPath(); ctx.arc(px, y, 7, 0, Math.PI*2); ctx.fillStyle = color; ctx.fill(); ctx.strokeStyle = "#1a212b"; ctx.lineWidth = 2; ctx.stroke(); };
+          dot(x.getPixelForValue(r.buzz), BUZZ);
+          dot(x.getPixelForValue(r.spend), REAL);
+        });
+      },
+    };
+    new Chart(document.getElementById("bgDumbbell"), {
+      type: "bar",
+      data: { labels:names, datasets:[{ label:"격차", data: rows.map(r=>[r.buzz, r.spend]),
+        backgroundColor: rows.map(r=> (r.gap<0 ? C.green : "#ef4444") + "55"), borderWidth:0, barPercentage:0.35, borderSkipped:false, borderRadius:20 }] },
+      plugins: [dumbDots],
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false },
+          tooltip:{ callbacks:{ label:(c)=>{ const r=rows[c.dataIndex]; return ` 화제성 ${r.buzz} · 실측 ${r.spend}% · gap ${r.gap>0?"+":""}${r.gap}`; } } } },
+        scales:{ x:{ ...gridX, min:0, max:100, ticks:{ callback:(v)=> v } }, y:{ ...gridY, grid:{ display:false } } } },
+    });
+
+    // 사분면 산점도 — 대각선(인식=실제) 위로 멀수록 숨은 실속
+    const ptLabels = {
+      id: "ptLabels",
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart;
+        const meta = chart.getDatasetMeta(1); // 산점 데이터셋
+        if (!meta) return;
+        ctx.save(); ctx.fillStyle = C.text; ctx.font = "600 11px Pretendard, sans-serif";
+        rows.forEach((r,i)=>{ const p = meta.data[i]; if (p) ctx.fillText(r.name, p.x + 9, p.y + 4); });
+        ctx.restore();
+      },
+    };
+    new Chart(document.getElementById("bgScatter"), {
+      data: {
+        datasets: [
+          { type:"line", label:"인식 = 실제", data:[{x:0,y:0},{x:100,y:100}], borderColor:C.muted, borderDash:[6,6], borderWidth:1.5, pointRadius:0, fill:false },
+          { type:"scatter", label:"상권", data: rows.map(r=>({ x:r.buzz, y:r.spend })),
+            backgroundColor: rows.map(r=> r.gap<0 ? C.green : C.muted), pointRadius:8, pointHoverRadius:10, borderColor:"#1a212b", borderWidth:2 },
+        ],
+      },
+      plugins: [ptLabels],
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=> c.datasetIndex===1 ? ` 화제성 ${c.parsed.x} · 실측 ${c.parsed.y}%` : null } } },
+        scales:{
+          x:{ ...gridX, min:0, max:100, title:{ display:true, text:"검색 화제성 →", color:C.muted } },
+          y:{ ...gridY, min:0, max:100, title:{ display:true, text:"인당매출 백분위(%) →", color:C.muted }, ticks:{ callback:(v)=> v+"%" } },
+        } },
+    });
+
+    // 소비 gap — 다이버징 바 (0 기준)
+    new Chart(document.getElementById("bgGap"), {
+      type: "bar",
+      data: { labels:names, datasets:[{ label:"gap(%p)", data: rows.map(r=>r.gap),
+        backgroundColor: rows.map(r=> r.gap<0 ? C.green : "#ef4444"), borderRadius:5, barPercentage:0.6 }] },
+      options: { indexAxis:"y", responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false },
+          tooltip:{ callbacks:{ label:(c)=> (c.parsed.x<0 ? ` 저평가(실속) ${c.parsed.x}%p` : ` 거품 +${c.parsed.x}%p`) } } },
+        scales:{
+          x:{ ...gridX, min:-100, max:100, grid:{ color:(ctx)=> ctx.tick.value===0 ? C.muted : C.grid, lineWidth:(ctx)=> ctx.tick.value===0 ? 1.5 : 1 }, ticks:{ callback:(v)=> v+"%p" } },
+          y:{ ...gridY, grid:{ display:false } },
+        } },
+    });
+  }
+
+  // ══════════ 탭 9: 숨은 오피스 상권 (gap + 오피스 신호) ══════════
+  function buildOffice() {
+    // 업종=음식점. type: office(파랑)/tourism(핑크)/mixed(회색)
+    const rows = [
+      { name:"강남역",   buzz:100, spend:91, type:"mixed",   lunch:34, weekday:74 },
+      { name:"명동",     buzz:25,  spend:92, type:"tourism", lunch:28, weekday:62 },
+      { name:"여의도역", buzz:26,  spend:96, type:"office",  lunch:52, weekday:88 },
+    ];
+    const TYPE = { office:C.accent, tourism:C.pink, mixed:C.muted };
+
+    // ⭐ 사분면 산점도 — 숨은 실속존 음영 + 유형 색 + 라벨
+    const hiddenZone = {
+      id: "hiddenZone",
+      beforeDatasetsDraw(chart) {
+        const { ctx, scales:{ x, y } } = chart;
+        const xL = x.getPixelForValue(0), xR = x.getPixelForValue(50);
+        const yT = y.getPixelForValue(100), yB = y.getPixelForValue(80);
+        ctx.save();
+        ctx.fillStyle = "#22c55e14";
+        ctx.fillRect(xL, yT, xR - xL, yB - yT);
+        ctx.fillStyle = C.green; ctx.font = "700 12px Pretendard, sans-serif"; ctx.textAlign = "left";
+        ctx.fillText("숨은 실속존", xL + 10, yT + 20);
+        ctx.restore();
+      },
+    };
+    const ofLabels = {
+      id: "ofLabels",
+      afterDatasetsDraw(chart) {
+        const { ctx } = chart; const meta = chart.getDatasetMeta(0);
+        ctx.save(); ctx.fillStyle = C.text; ctx.font = "600 11px Pretendard, sans-serif";
+        rows.forEach((r,i)=>{ const p = meta.data[i]; if (p) ctx.fillText(r.name, p.x + 10, p.y + 4); });
+        ctx.restore();
+      },
+    };
+    new Chart(document.getElementById("ofScatter"), {
+      type: "scatter",
+      data: { datasets:[{ label:"상권", data: rows.map(r=>({ x:r.buzz, y:r.spend })),
+        backgroundColor: rows.map(r=> TYPE[r.type]), pointRadius:10, pointHoverRadius:12, borderColor:"#1a212b", borderWidth:2 }] },
+      plugins: [hiddenZone, ofLabels],
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ display:false }, tooltip:{ callbacks:{ label:(c)=>{ const r=rows[c.dataIndex]; return ` ${r.name} · 화제성 ${r.buzz} · 소비 ${r.spend}% · ${r.type}`; } } } },
+        scales:{
+          x:{ ...gridX, min:0, max:100, title:{ display:true, text:"검색 화제성 →", color:C.muted } },
+          y:{ ...gridY, min:0, max:100, title:{ display:true, text:"인당매출 백분위(%) →", color:C.muted }, ticks:{ callback:(v)=> v+"%" } },
+        } },
+    });
+
+    // 오피스 지수 — 점심 매출 비중 + 평일 편중 (그룹 막대, 여의도 강조)
+    new Chart(document.getElementById("ofProxy"), {
+      type: "bar",
+      data: { labels: rows.map(r=>r.name), datasets:[
+        { label:"점심(11–14) 매출 비중", data: rows.map(r=>r.lunch), backgroundColor:C.accent, borderRadius:5, barPercentage:0.8 },
+        { label:"평일 유동 편중", data: rows.map(r=>r.weekday), backgroundColor:C.cyan, borderRadius:5, barPercentage:0.8 },
+      ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text, font:{ size:10 } } },
+          tooltip:{ callbacks:{ label:(c)=>` ${c.dataset.label}: ${c.parsed.y}%` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false } }, y:{ ...gridY, max:100, ticks:{ callback:(v)=> v+"%" } } } },
+    });
+
+    // 24시간 매출 지문 — 여의도(오피스) vs 명동(관광)
+    const hours = Array.from({length:24}, (_,h)=> `${String(h).padStart(2,"0")}시`);
+    const yeouido = [2,1,1,1,1,2,8,20,30,40,55,92,100,70,45,40,42,50,45,28,15,8,4,3];
+    const myeong  = [3,2,1,1,1,2,6,14,22,30,42,60,72,68,66,70,80,88,90,82,66,45,25,10];
+    new Chart(document.getElementById("ofFingerprint"), {
+      type: "line",
+      data: { labels:hours, datasets:[
+        { label:"여의도(오피스)", data:yeouido, borderColor:C.accent, backgroundColor:"#4f8cff22", fill:true, tension:0.4, borderWidth:2, pointRadius:0 },
+        { label:"명동(관광)", data:myeong, borderColor:C.pink, backgroundColor:"transparent", tension:0.4, borderWidth:2, pointRadius:0, borderDash:[5,4] },
+      ] },
+      options: { responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:"bottom", labels:{ boxWidth:10, boxHeight:10, padding:10, color:C.text, font:{ size:10 } } },
+          tooltip:{ mode:"index", intersect:false, callbacks:{ label:(c)=>` ${c.dataset.label}: ${c.parsed.y}` } } },
+        scales:{ x:{ ...gridX, grid:{ display:false }, ticks:{ maxRotation:0, autoSkip:true, maxTicksLimit:8 } }, y:{ ...gridY, ticks:{ display:false } } } },
+    });
+  }
+
+  // ══════════ 탭 전환 (지연 초기화) ══════════
+  const built = { gangnam:false, all:false, other:false, percap:false, hongdae:false, hongpct:false, daynight:false, buzzgap:false, office:false };
+  const builders = { gangnam:buildGangnam, all:buildAll, other:buildOther, percap:buildPercap, hongdae:buildHongdae, hongpct:buildHongPct, daynight:buildDayNight, buzzgap:buildBuzzGap, office:buildOffice };
+  function activate(name) {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.toggle("active", b.dataset.tab===name));
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.toggle("active", p.id==="tab-"+name));
+    if (!built[name]) { builders[name](); built[name] = true; }
+  }
+  document.querySelectorAll(".tab-btn").forEach(b => b.addEventListener("click", () => activate(b.dataset.tab)));
+  activate("gangnam"); // 기본 탭
+</script>
+</body>
+</html>

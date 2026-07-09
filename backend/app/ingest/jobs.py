@@ -544,9 +544,10 @@ def ingest_buzz(db: Session | None = None) -> IngestionRun:
     owns_session = db is None
     db = db or SessionLocal()
     source = "buzz"
-    run = _start_run(db, source)
+    run: IngestionRun | None = None
 
     try:
+        run = _start_run(db, source)
         response = fetch_buzz()
         rows = transform_datalab_response(response)
         upserted = upsert_buzz(db, rows)
@@ -568,10 +569,16 @@ def ingest_buzz(db: Session | None = None) -> IngestionRun:
 
     except Exception as exc:
         db.rollback()
-        run.status = "failed"
-        run.error_message = str(exc)[:2000]
-        run.finished_at = func.now()
-        db.commit()
+        # run이 None이면 _start_run 자체가 실패한 것 → 업데이트할 레코드가 없다.
+        if run is not None:
+            fetched = len(rows) if "rows" in locals() else 0
+            run.status = "failed"
+            run.error_message = str(exc)[:2000]
+            run.fetched_count = fetched
+            run.upserted_count = 0
+            run.failed_count = fetched
+            run.finished_at = func.now()
+            db.commit()
         logger.exception("인제스천 실패 [%s]", source)
         raise
     finally:
