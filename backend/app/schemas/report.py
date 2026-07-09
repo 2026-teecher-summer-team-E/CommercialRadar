@@ -29,3 +29,32 @@ class ReportDetailOut(BaseModel):
     share_token: str | None = None
     created_at: datetime
     content: ReportContentOut
+
+
+class ReportContentCreate(BaseModel):
+    survival_rate: float | None = None
+    closure_rate: float | None = None
+    open_rate: float | None = None
+    total_business: int | None = None
+    peak_start: time | None = None
+    peak_end: time | None = None
+    district_score: float | None = None
+    year_quarter: str | None = None
+    avg_rent_per_sqm: float | None = None
+    avg_population: float | None = None
+
+
+class ReportCreate(BaseModel):
+    title: str
+    district_name: str
+    category_name: str
+    memo: str | None = None
+    content: ReportContentCreate
+
+
+class ReportCreateOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    title: str
+    created_at: datetime
