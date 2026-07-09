@@ -7,8 +7,9 @@ _SAMPLE_RESPONSE = {
     "timeUnit": "month",
     "results": [
         {"title": "1315", "keywords": ["강남역"], "data": [
-            {"period": "2025-11-01", "ratio": 90.0},
-            {"period": "2025-12-01", "ratio": 100.0},
+            {"period": "2025-10-01", "ratio": 100.0},
+            {"period": "2025-11-01", "ratio": 40.0},
+            {"period": "2025-12-01", "ratio": 55.0},
         ]},
         {"title": "1225", "keywords": ["명동"], "data": [
             {"period": "2025-12-01", "ratio": 61.5},
@@ -39,12 +40,13 @@ def test_buzz_districts_has_three_targets():
     assert ids == {1315, 1225, 1260}
 
 
-def test_transform_takes_latest_ratio_and_month():
+def test_transform_takes_window_max_and_latest_month():
     rows = transform_datalab_response(_SAMPLE_RESPONSE)
     by_id = {r["commercial_district_id"]: r for r in rows}
 
-    assert by_id[1315]["buzz_index"] == 100.0
-    assert by_id[1315]["period"] == "2025-12"
+    # 1315: max ratio is 100.0 (at 2025-10), NOT the latest point (55.0 at 2025-12)
+    assert by_id[1315]["buzz_index"] == 100.0   # window max
+    assert by_id[1315]["period"] == "2025-12"   # latest month
     assert by_id[1315]["source"] == "naver_datalab"
     assert by_id[1225]["buzz_index"] == 61.5
     assert by_id[1260]["buzz_index"] == 22.3
