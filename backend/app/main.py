@@ -5,6 +5,7 @@ from app.routers import (
     admin,
     analysis,
     businesses,
+    buzz,
     commercial,
     commercial_districts,
     forecast,
@@ -41,6 +42,7 @@ app.include_router(ml.router, prefix="/api")
 app.include_router(interest_districts.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
+app.include_router(buzz.router, prefix="/api")
 app.include_router(admin.router)
 
 

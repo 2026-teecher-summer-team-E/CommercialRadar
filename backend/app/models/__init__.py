@@ -1,4 +1,5 @@
 from app.models.business_category import BusinessCategory
+from app.models.buzz_stats import BuzzStats
 from app.models.commercial_district import CommercialDistrict
 from app.models.foreign_population import ForeignPopulation
 from app.models.ingestion_run import IngestionRun
@@ -14,6 +15,7 @@ from app.models.users import User
 __all__ = [
     "CommercialDistrict",
     "BusinessCategory",
+    "BuzzStats",
     "PopulationHeatmap",
     "PopulationTimeseries",
     "ForeignPopulation",
