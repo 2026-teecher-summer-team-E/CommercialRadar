@@ -29,7 +29,7 @@ def upgrade() -> None:
     sa.Column('buzz_index', sa.Float(), nullable=True),
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
-    sa.Column('is_deleted', sa.Boolean(), nullable=False),
+    sa.Column('is_deleted', sa.Boolean(), nullable=False, server_default=sa.text('false')),
     sa.ForeignKeyConstraint(['commercial_district_id'], ['commercial_district.id'], ),
     sa.PrimaryKeyConstraint('id'),
     sa.UniqueConstraint('commercial_district_id', 'source', 'period', name='uq_buzz_cd_source_period')
