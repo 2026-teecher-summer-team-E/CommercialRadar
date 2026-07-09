@@ -17,8 +17,8 @@ from app.services.analysis_service import AnalysisService
 
 router = APIRouter(tags=["analysis"])
 
-ALLOWED_RENT_FLOOR_TYPES = {"소규모", "중대형", "집합"}
-
+from app.ingest.clients.reb_client import STATBL_FLOOR_TYPE
+ALLOWED_RENT_FLOOR_TYPES = set(STATBL_FLOOR_TYPE.values())
 
 @router.get(
     "/commercial-districts/{district_id}/rent",
