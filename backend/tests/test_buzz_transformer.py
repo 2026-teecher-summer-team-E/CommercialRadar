@@ -1,4 +1,23 @@
 from app.ingest.clients.naver_datalab_client import build_datalab_payload, BUZZ_DISTRICTS
+from app.ingest.transformers.buzz_transformer import transform_datalab_response
+
+_SAMPLE_RESPONSE = {
+    "startDate": "2025-07-01",
+    "endDate": "2025-12-01",
+    "timeUnit": "month",
+    "results": [
+        {"title": "1315", "keywords": ["강남역"], "data": [
+            {"period": "2025-11-01", "ratio": 90.0},
+            {"period": "2025-12-01", "ratio": 100.0},
+        ]},
+        {"title": "1225", "keywords": ["명동"], "data": [
+            {"period": "2025-12-01", "ratio": 61.5},
+        ]},
+        {"title": "1260", "keywords": ["여의도"], "data": [
+            {"period": "2025-12-01", "ratio": 22.3},
+        ]},
+    ],
+}
 
 
 def test_build_datalab_payload_groups_by_district_id():
@@ -18,3 +37,20 @@ def test_build_datalab_payload_groups_by_district_id():
 def test_buzz_districts_has_three_targets():
     ids = {d["district_id"] for d in BUZZ_DISTRICTS}
     assert ids == {1315, 1225, 1260}
+
+
+def test_transform_takes_latest_ratio_and_month():
+    rows = transform_datalab_response(_SAMPLE_RESPONSE)
+    by_id = {r["commercial_district_id"]: r for r in rows}
+
+    assert by_id[1315]["buzz_index"] == 100.0
+    assert by_id[1315]["period"] == "2025-12"
+    assert by_id[1315]["source"] == "naver_datalab"
+    assert by_id[1225]["buzz_index"] == 61.5
+    assert by_id[1260]["buzz_index"] == 22.3
+    assert len(rows) == 3
+
+
+def test_transform_skips_empty_data():
+    resp = {"results": [{"title": "1315", "keywords": [], "data": []}]}
+    assert transform_datalab_response(resp) == []
