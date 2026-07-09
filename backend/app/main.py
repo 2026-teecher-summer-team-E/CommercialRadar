@@ -40,7 +40,6 @@ app.include_router(ml.router, prefix="/api")
 app.include_router(interest_districts.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
-app.include_router(reports.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
 app.include_router(admin.router)
 
