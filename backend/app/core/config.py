@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     SEOUL_API_KEY: str = ""
     # 한국부동산원 R-ONE 부동산통계 서비스 인증키
     REB_API_KEY: str = ""
+    # 네이버 데이터랩 검색어 트렌드 API 인증키
+    NAVER_CLIENT_ID: str = ""
+    NAVER_CLIENT_SECRET: str = ""
     ADMIN_KEY: str = ""
 
     # 로컬 실행 시 루트 .env를 읽는다. 도커 환경에선 compose의 env_file이
