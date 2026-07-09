@@ -551,15 +551,18 @@ def ingest_buzz(db: Session | None = None) -> IngestionRun:
         rows = transform_datalab_response(response)
         upserted = upsert_buzz(db, rows)
 
+        # transform이 빈 그룹을 스킵하므로 진단용 fetched_count는 raw results 기준으로 기록한다.
+        fetched = len(response.get("results", []))
+
         run.status = "success"
-        run.fetched_count = len(rows)
+        run.fetched_count = fetched
         run.upserted_count = upserted
         run.failed_count = 0
         run.finished_at = func.now()
         db.commit()
         logger.info(
             "인제스천 완료 [%s]: fetched=%d upserted=%d",
-            source, len(rows), upserted,
+            source, fetched, upserted,
         )
         return run
 
