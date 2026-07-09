@@ -51,6 +51,7 @@ def create_report_share_link(
             Report.user_id == current_user.id,
             Report.is_deleted.is_(False),
         )
+        .with_for_update()
         .first()
     )
     if report is None:
