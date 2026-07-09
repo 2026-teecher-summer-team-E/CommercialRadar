@@ -17,17 +17,20 @@ from app.services.analysis_service import AnalysisService
 
 router = APIRouter(tags=["analysis"])
 
+ALLOWED_RENT_FLOOR_TYPES = {"소규모", "중대형", "집합"}
+
 
 @router.get(
     "/commercial-districts/{district_id}/rent",
     response_model=CommercialDistrictRentResponse,
     summary="상권 임대료 조회",
     description=(
-        "특정 상권의 단위면적당 평균 임대료를 층수별로 조회합니다. "
+        "특정 상권의 단위면적당 평균 임대료를 상가유형별로 조회합니다. "
         "`year_quarter`를 생략하면 해당 상권의 최신 분기를 자동으로 선택하고, "
-        "`floor_type`을 입력하면 해당 층수만 필터링합니다."
+        "`floor_type`을 입력하면 해당 상가유형만 필터링합니다. "
+        "`floor_type`은 DB 컬럼명이며 실제 값은 소규모, 중대형, 집합 중 하나입니다."
     ),
-    response_description="상권의 기준 분기와 층수별 임대료 목록",
+    response_description="상권의 기준 분기와 상가유형별 임대료 목록",
     responses={
         200: {
             "content": {
@@ -36,14 +39,15 @@ router = APIRouter(tags=["analysis"])
                         "district_id": 42,
                         "year_quarter": "2024-Q4",
                         "rent_stats": [
-                            {"floor_type": "1F", "avg_rent_per_sqm": 85000},
-                            {"floor_type": "2F", "avg_rent_per_sqm": 42000},
-                            {"floor_type": "지하", "avg_rent_per_sqm": 28000},
+                            {"floor_type": "소규모", "avg_rent_per_sqm": 85000},
+                            {"floor_type": "중대형", "avg_rent_per_sqm": 42000},
+                            {"floor_type": "집합", "avg_rent_per_sqm": 28000},
                         ],
                     }
                 }
             }
         },
+        400: {"description": "floor_type 값이 허용된 상가유형이 아닌 경우"},
         404: {"description": "해당 district_id의 상권이 없거나 삭제된 경우"},
     },
 )
@@ -56,12 +60,12 @@ def get_commercial_district_rent(
     ),
     floor_type: str | None = Query(
         default=None,
-        description="층수 구분. 입력하면 해당 층수만 반환합니다.",
-        examples=["1F"],
+        description="상가유형 필터. 허용값: 소규모, 중대형, 집합",
+        examples=["소규모"],
     ),
     db: Session = Depends(get_db),
 ):
-    """상권 ID 기준으로 분기별·층수별 임대료를 반환합니다."""
+    """상권 ID 기준으로 분기별·상가유형별 임대료를 반환합니다."""
     district_exists = db.scalar(
         select(CommercialDistrict.id).where(
             CommercialDistrict.id == district_id,
@@ -76,6 +80,11 @@ def get_commercial_district_rent(
 
     selected_quarter = year_quarter.strip() if year_quarter else None
     selected_floor = floor_type.strip() if floor_type else None
+    if selected_floor and selected_floor not in ALLOWED_RENT_FLOOR_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="floor_type은 소규모, 중대형, 집합 중 하나여야 합니다",
+        )
 
     if not selected_quarter:
         selected_quarter = db.scalar(
