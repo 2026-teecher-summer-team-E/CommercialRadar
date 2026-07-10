@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
 import { commercialApi } from "../services/commercialApi";
 import SangkwonPanel from "../components/map/SangkwonPanel";
-import LeafletMap from "../components/map/LeafletMap";
+import LeafletMap, { type MapMode } from "../components/map/LeafletMap";
 import {
   toScore,
   type DistrictDetail,
@@ -27,18 +27,20 @@ export default function MapPage() {
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<DistrictSearchResult[]>([]);
   const [geo, setGeo] = useState<DistrictGeo[]>([]);
+  const [geojson, setGeojson] = useState<GeoJSON.FeatureCollection | null>(null);
+  const [mode, setMode] = useState<MapMode>("regions");
 
-  // 전 상권 좌표(지도 마커) 1회 로드.
+  // 전 상권 좌표(핀) + 경계 폴리곤(구역) 1회 로드.
   useEffect(() => {
     let alive = true;
     commercialApi
       .geo()
-      .then((r) => {
-        if (alive) setGeo(r.data);
-      })
-      .catch(() => {
-        if (alive) setGeo([]);
-      });
+      .then((r) => alive && setGeo(r.data))
+      .catch(() => alive && setGeo([]));
+    commercialApi
+      .geojson()
+      .then((r) => alive && setGeojson(r.data))
+      .catch(() => alive && setGeojson(null));
     return () => {
       alive = false;
     };
@@ -165,15 +167,55 @@ export default function MapPage() {
           onSelect={setSelectedId}
           onOpenProfile={openProfile}
         />
-        <LeafletMap
-          points={geo}
-          selectedId={selectedId}
-          activeName={summary?.detail?.district_name ?? null}
-          activeType={summary?.detail?.type_name ?? null}
-          activeScore={activeScore}
-          onSelect={setSelectedId}
-          onOpenProfile={openProfile}
-        />
+        <div style={{ flex: 1, position: "relative", display: "flex", minWidth: 0 }}>
+          <div
+            style={{
+              position: "absolute",
+              top: 12,
+              right: 12,
+              zIndex: 1000,
+              display: "flex",
+              gap: 2,
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 8,
+              padding: 3,
+              boxShadow: "0 1px 2px rgba(15,23,42,.1)",
+            }}
+          >
+            {(["regions", "pins"] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => setMode(m)}
+                style={{
+                  padding: "6px 14px",
+                  border: "none",
+                  borderRadius: 6,
+                  fontSize: 12,
+                  fontWeight: 700,
+                  fontFamily: "var(--font-sans)",
+                  cursor: "pointer",
+                  background: mode === m ? "var(--color-primary-light)" : "transparent",
+                  color: mode === m ? "var(--color-primary)" : "var(--color-muted)",
+                }}
+              >
+                {m === "regions" ? "구역" : "핀"}
+              </button>
+            ))}
+          </div>
+          <LeafletMap
+            points={geo}
+            geojson={geojson}
+            mode={mode}
+            selectedId={selectedId}
+            activeName={summary?.detail?.district_name ?? null}
+            activeType={summary?.detail?.type_name ?? null}
+            activeScore={activeScore}
+            onSelect={setSelectedId}
+            onOpenProfile={openProfile}
+          />
+        </div>
       </div>
     </div>
   );

@@ -37,4 +37,8 @@ export const commercialApi = {
   /** [신규] 전 상권 중심좌표(Leaflet 마커용). gu_name 으로 자치구 필터. */
   geo: (params?: { gu_name?: string }) =>
     apiClient.get<DistrictGeo[]>("/api/commercial-districts/geo", { params }),
+
+  /** [신규] 상권 경계 폴리곤 GeoJSON(Leaflet 구역 표시용). */
+  geojson: (params?: { gu_name?: string }) =>
+    apiClient.get<GeoJSON.FeatureCollection>("/api/commercial-districts/geojson", { params }),
 };
