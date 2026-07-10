@@ -111,9 +111,8 @@ export default function MapPage() {
     };
   }, [query]);
 
-  // 드롭다운 옵션: 검색 결과 우선, 없으면 현재 상권만.
+  // 좌측 패널 드롭다운은 '현재 선택 상권'만 표시(검색·선택은 상단 검색바가 담당).
   const panelOptions = useMemo<DistrictSearchResult[]>(() => {
-    if (options.length > 0) return options;
     if (summary?.detail) {
       const d = summary.detail;
       return [
@@ -127,7 +126,14 @@ export default function MapPage() {
       ];
     }
     return [];
-  }, [options, summary]);
+  }, [summary]);
+
+  // 검색 결과 클릭 → 실제 상권 선택(selectedId 변경) + 검색 초기화.
+  const handlePickSearch = (id: number) => {
+    setSelectedId(id);
+    setQuery("");
+    setOptions([]);
+  };
 
   const activeScore = useMemo(
     () =>
@@ -143,8 +149,8 @@ export default function MapPage() {
 
   return (
     <div className={styles.page}>
-      {/* 상단 검색 바 (앱 네비 사이드바는 AppLayout이 담당) */}
-      <div className={styles.searchBar}>
+      {/* 상단 검색 바 + 자동완성 결과 (앱 네비 사이드바는 AppLayout이 담당) */}
+      <div className={styles.searchBar} style={{ position: "relative" }}>
         <span className={styles.searchIcon} aria-hidden>
           ⌕
         </span>
@@ -155,6 +161,56 @@ export default function MapPage() {
           value={query}
           onChange={(e) => setQuery(e.target.value)}
         />
+        {query.trim() && options.length > 0 && (
+          <ul
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              right: 0,
+              zIndex: 1200,
+              listStyle: "none",
+              margin: 0,
+              padding: 6,
+              background: "var(--color-surface)",
+              border: "1px solid var(--color-border)",
+              borderRadius: 12,
+              boxShadow: "var(--shadow-pop)",
+              maxHeight: 320,
+              overflowY: "auto",
+            }}
+          >
+            {options.map((o) => (
+              <li key={o.id}>
+                <button
+                  type="button"
+                  onClick={() => handlePickSearch(o.id)}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "9px 12px",
+                    border: "none",
+                    background: "transparent",
+                    borderRadius: 8,
+                    cursor: "pointer",
+                    fontFamily: "var(--font-sans)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 2,
+                  }}
+                >
+                  <span style={{ fontSize: 14, fontWeight: 600, color: "var(--color-text)" }}>
+                    {o.district_name}
+                  </span>
+                  <span style={{ fontSize: 12, color: "var(--color-muted)" }}>
+                    {[o.gu_name, o.dong_name].filter(Boolean).join(" · ")}
+                    {o.type_name ? ` · ${o.type_name}` : ""}
+                  </span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
 
       <div className={styles.body}>
