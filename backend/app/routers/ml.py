@@ -377,3 +377,54 @@ def get_timeseries(
         "history": history,
         "forecast": forecast,
     }
+
+
+@router.get("/commercial-districts/{district_id}/population-age")
+def get_population_age(district_id: int, db: Session = Depends(get_db)):
+    """상권의 최신 관측 분기 연령 구성비(%)를 반환.
+
+    미래 연령분포 예측 데이터는 없으므로, 관측 구성비를 미래 예상치의 대용으로 쓴다.
+    구성비는 분기별로 안정적이라는 가정이며 총 유동인구만 별도로 예측된다.
+    """
+    exists = (
+        db.query(CommercialDistrict.id)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    latest_q = (
+        db.query(func.max(PopulationTimeseries.year_quarter))
+        .filter(
+            PopulationTimeseries.commercial_district_id == district_id,
+            PopulationTimeseries.dimension == "age",
+            PopulationTimeseries.is_deleted == False,  # noqa: E712
+        )
+        .scalar()
+    )
+    if latest_q is None:
+        return {"district_id": district_id, "year_quarter": None, "slices": []}
+
+    rows = (
+        db.query(PopulationTimeseries.slot, PopulationTimeseries.avg_population)
+        .filter(
+            PopulationTimeseries.commercial_district_id == district_id,
+            PopulationTimeseries.dimension == "age",
+            PopulationTimeseries.year_quarter == latest_q,
+            PopulationTimeseries.is_deleted == False,  # noqa: E712
+        )
+        .all()
+    )
+    total = sum((v or 0.0) for _, v in rows)
+    if total <= 0:
+        return {"district_id": district_id, "year_quarter": latest_q, "slices": []}
+
+    slices = [
+        {"name": slot, "pct": round((v or 0.0) / total * 100)}
+        for slot, v in rows
+    ]
+    return {"district_id": district_id, "year_quarter": latest_q, "slices": slices}
