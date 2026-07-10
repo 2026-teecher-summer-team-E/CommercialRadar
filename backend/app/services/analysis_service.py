@@ -1,7 +1,10 @@
+import math
+
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.business_category import BusinessCategory
+from app.models.population_heatmap import PopulationHeatmap
 from app.models.population_timeseries import PopulationTimeseries
 
 
@@ -10,8 +13,20 @@ def _weighted_avg(rate_col, weight_col):
     return func.sum(rate_col * weight_col) / func.nullif(func.sum(weight_when_present), 0)
 
 
+def _clamp(value: float, low: float = 0.0, high: float = 100.0) -> float:
+    return max(low, min(high, value))
+
+
 class AnalysisService:
     RATE_METRICS = {"survival_rate", "closure_rate", "open_rate"}
+
+    # 요일 정렬은 데이터 문자열과 무관하게 월~일 고정 순서로 강제한다.
+    DAY_ORDER = ["월", "화", "수", "목", "금", "토", "일"]
+
+    # 레이더 정규화 상한(도메인 합리값). population/sales는 절대량이라 상권 간
+    # 비교를 위해 고정 상한 대비 비율로 0~100 스케일한다.
+    RADAR_POPULATION_CAP = 3_000_000.0  # 최신 분기 총 유동인구 상한(명)
+    RADAR_SALES_LOG_CAP = 12.0          # log10(total_sales) 상한 → 1조원(=10^12)에서 100
 
     @staticmethod
     def get_time_series(
@@ -170,6 +185,143 @@ class AnalysisService:
             "district_id": district_id,
             "year_quarter": resolved_quarter,
             "ranking": ranking,
+        }
+
+    @staticmethod
+    def get_population_heatmap(db: Session, district_id: int) -> dict:
+        """주변분포(marginal) 유동인구를 시간대/요일 슬롯 리스트로 반환한다.
+
+        population_heatmap은 2D 매트릭스가 아니라 dimension("time"|"day")별 slot
+        marginal이므로, time과 day를 각각 정렬된 슬롯 목록으로 내보낸다.
+        """
+        rows = (
+            db.query(
+                PopulationHeatmap.dimension,
+                PopulationHeatmap.slot,
+                PopulationHeatmap.avg_population,
+            )
+            .filter(
+                PopulationHeatmap.commercial_district_id == district_id,
+                PopulationHeatmap.is_deleted.is_(False),
+            )
+            .all()
+        )
+
+        time_slots: list[dict] = []
+        day_by_slot: dict[str, float | None] = {}
+        for row in rows:
+            item = {"slot": row.slot, "avg_population": row.avg_population}
+            if row.dimension == "time":
+                time_slots.append(item)
+            elif row.dimension == "day":
+                day_by_slot[row.slot] = row.avg_population
+
+        # time: slot 문자열("00~06" 등) 오름차순. day: 월~일 고정 순서.
+        time_slots.sort(key=lambda item: item["slot"])
+        by_day = [
+            {"slot": day, "avg_population": day_by_slot[day]}
+            for day in AnalysisService.DAY_ORDER
+            if day in day_by_slot
+        ]
+
+        return {
+            "district_id": district_id,
+            "by_time": time_slots,
+            "by_day": by_day,
+        }
+
+    @staticmethod
+    def get_radar(db: Session, district_id: int) -> dict:
+        """상권 강점 프로필 5축을 0~100으로 정규화해 반환한다.
+
+        산출식(각 축 0~100, 소수 1자리):
+          - survival:   최신 분기 상권 단위 survival_rate(%)를 그대로 사용, 0~100 클램프.
+          - population: 최신 분기 총 유동인구를 RADAR_POPULATION_CAP 대비 비율로 스케일.
+          - sales:      최신 분기 total_sales 합계를 log10 스케일(RADAR_SALES_LOG_CAP 기준).
+          - stability:  100 - closure_rate(%) (상권 단위 가중평균), 0~100 클램프.
+          - growth:     상권 단위 open_rate(%)를 5배 스케일(개업률은 통상 20% 안팎이라
+                        5배 하면 20% → 100). 0~100 클램프.
+        기준 분기는 business_category 최신 분기. 데이터가 없으면 해당 축은 0.0.
+        """
+        target_quarter = (
+            db.query(func.max(BusinessCategory.year_quarter))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+
+        survival = population = sales = stability = growth = 0.0
+
+        if target_quarter is not None:
+            biz = (
+                db.query(
+                    _weighted_avg(BusinessCategory.survival_rate, BusinessCategory.total_business).label(
+                        "survival_rate"
+                    ),
+                    _weighted_avg(BusinessCategory.closure_rate, BusinessCategory.total_business).label(
+                        "closure_rate"
+                    ),
+                    _weighted_avg(BusinessCategory.open_rate, BusinessCategory.total_business).label(
+                        "open_rate"
+                    ),
+                    func.sum(BusinessCategory.total_sales).label("total_sales"),
+                )
+                .filter(
+                    BusinessCategory.commercial_district_id == district_id,
+                    BusinessCategory.year_quarter == target_quarter,
+                    BusinessCategory.is_deleted.is_(False),
+                )
+                .one()
+            )
+
+            if biz.survival_rate is not None:
+                survival = _clamp(float(biz.survival_rate))
+            if biz.closure_rate is not None:
+                stability = _clamp(100.0 - float(biz.closure_rate))
+            if biz.open_rate is not None:
+                growth = _clamp(float(biz.open_rate) * 5.0)
+            if biz.total_sales:
+                sales = _clamp(
+                    math.log10(float(biz.total_sales) + 1.0) / AnalysisService.RADAR_SALES_LOG_CAP * 100.0
+                )
+
+            # population: population_timeseries 최신 분기 총 유동인구 사용.
+            total_pop = (
+                db.query(func.sum(PopulationTimeseries.avg_population))
+                .filter(
+                    PopulationTimeseries.commercial_district_id == district_id,
+                    PopulationTimeseries.dimension == "total",
+                    PopulationTimeseries.is_deleted.is_(False),
+                    PopulationTimeseries.year_quarter
+                    == (
+                        db.query(func.max(PopulationTimeseries.year_quarter))
+                        .filter(
+                            PopulationTimeseries.commercial_district_id == district_id,
+                            PopulationTimeseries.dimension == "total",
+                            PopulationTimeseries.is_deleted.is_(False),
+                        )
+                        .scalar_subquery()
+                    ),
+                )
+                .scalar()
+            )
+            if total_pop:
+                population = _clamp(float(total_pop) / AnalysisService.RADAR_POPULATION_CAP * 100.0)
+
+        axes = [
+            {"key": "survival", "label": "생존율", "value": round(survival, 1)},
+            {"key": "population", "label": "유동인구", "value": round(population, 1)},
+            {"key": "sales", "label": "매출", "value": round(sales, 1)},
+            {"key": "stability", "label": "안정성", "value": round(stability, 1)},
+            {"key": "growth", "label": "성장성", "value": round(growth, 1)},
+        ]
+
+        return {
+            "district_id": district_id,
+            "year_quarter": target_quarter,
+            "axes": axes,
         }
 
     @staticmethod
