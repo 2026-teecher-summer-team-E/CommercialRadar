@@ -5,9 +5,13 @@ import DashboardPage from "./pages/DashboardPage";
 import MapPage from "./pages/MapPage";
 import ComparePage from "./pages/ComparePage";
 import MyPage from "./pages/MyPage";
+import RankingPage from "./pages/RankingPage";
+import TrendsPage from "./pages/TrendsPage";
+import AdminPage from "./pages/AdminPage";
 import LandingPage from "./pages/LandingPage";
 import SignInPage from "./pages/SignInPage";
 import SignUpPage from "./pages/SignUpPage";
+import NotFoundPage from "./pages/NotFoundPage";
 
 /** 앱 내부 페이지: 인증 가드 + 사이드바 레이아웃 공유. */
 function appRoute(node: React.ReactNode) {
@@ -31,7 +35,13 @@ function App() {
         <Route path="/" element={appRoute(<MapPage />)} />
         <Route path="/dashboard/:districtCode" element={appRoute(<DashboardPage />)} />
         <Route path="/compare" element={appRoute(<ComparePage />)} />
+        <Route path="/ranking" element={appRoute(<RankingPage />)} />
+        <Route path="/trends" element={appRoute(<TrendsPage />)} />
+        <Route path="/admin" element={appRoute(<AdminPage />)} />
         <Route path="/mypage" element={appRoute(<MyPage />)} />
+
+        {/* 404 */}
+        <Route path="*" element={<NotFoundPage />} />
       </Routes>
     </BrowserRouter>
   );

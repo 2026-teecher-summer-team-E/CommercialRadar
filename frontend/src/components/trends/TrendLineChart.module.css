@@ -1,0 +1,28 @@
+.svg {
+  display: block;
+}
+.grid {
+  stroke: var(--color-line);
+  stroke-width: 1;
+}
+.axisLabel {
+  font-family: var(--font-num);
+  font-size: 11px;
+  fill: var(--color-muted);
+}
+.line {
+  fill: none;
+  stroke: var(--color-primary);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+.area {
+  fill: var(--color-primary-light);
+  opacity: 0.6;
+}
+.point {
+  fill: var(--color-surface);
+  stroke: var(--color-primary);
+  stroke-width: 2;
+}

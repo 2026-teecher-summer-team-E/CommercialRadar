@@ -1,0 +1,115 @@
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.table th {
+  padding: 10px 14px;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+  text-align: center;
+  white-space: nowrap;
+}
+.rankTh {
+  width: 72px;
+}
+.nameTh {
+  text-align: left;
+}
+
+.row {
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+.row:hover {
+  background: var(--color-primary-light);
+}
+.table td {
+  padding: 14px;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-text-body);
+  text-align: center;
+}
+.table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.rankCell {
+  width: 72px;
+}
+.nameCell {
+  text-align: left;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+}
+.numCell {
+  font-family: var(--font-num);
+}
+
+/* 순위 뱃지 */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 8px;
+  border-radius: var(--radius-pill);
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 700;
+  background: var(--color-chip);
+  color: var(--color-muted);
+}
+.badgeGold {
+  background: var(--color-primary);
+  color: var(--color-surface);
+}
+.badgeSilver {
+  background: var(--color-primary-soft);
+  color: var(--color-primary-dark);
+}
+.badgeBronze {
+  background: var(--color-orange-bg);
+  color: var(--color-orange);
+}
+
+/* 폐업 위험 필 */
+.risk {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+.riskLow {
+  background: var(--color-green-bg);
+  color: var(--color-green);
+}
+.riskMid {
+  background: var(--color-orange-bg);
+  color: var(--color-orange);
+}
+.riskHigh {
+  background: var(--color-primary-light);
+  color: var(--color-red);
+}
+.riskNone {
+  background: var(--color-chip);
+  color: var(--color-muted);
+}
+
+.survival {
+  font-weight: 700;
+  color: var(--color-text);
+}
+.score {
+  font-weight: 700;
+  color: var(--color-primary);
+}
+.scoreEmpty {
+  color: var(--color-faint);
+}

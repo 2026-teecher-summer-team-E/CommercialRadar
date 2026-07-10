@@ -1,0 +1,254 @@
+.page {
+  padding: 26px 30px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* 헤더 */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+.districtSelect {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.districtLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.select {
+  padding: 9px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.select:hover {
+  border-color: var(--color-border-strong);
+}
+.select:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+
+/* 섹션 */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sectionTitle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.accentBar {
+  width: 4px;
+  align-self: stretch;
+  min-height: 34px;
+  background: var(--color-primary);
+  border-radius: var(--radius-pill);
+}
+.sectionHeading {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.sectionSub {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* 카드 */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 16px;
+}
+
+/* 지표 토글 */
+.toggle {
+  display: inline-flex;
+  padding: 3px;
+  background: var(--color-chip);
+  border-radius: var(--radius-pill);
+  gap: 2px;
+}
+.toggleBtn {
+  padding: 7px 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toggleBtn:hover {
+  color: var(--color-text);
+}
+.toggleActive {
+  background: var(--color-surface);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-card);
+}
+
+/* 증감(Δ) */
+.deltaBox {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.deltaCurrent {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-text);
+  font-family: var(--font-num);
+}
+.deltaTag {
+  font-size: 14px;
+  font-weight: 700;
+  font-family: var(--font-num);
+}
+.deltaUp {
+  color: var(--color-green);
+}
+.deltaDown {
+  color: var(--color-red);
+}
+.deltaFlat {
+  color: var(--color-muted);
+}
+.deltaSub {
+  font-size: 12px;
+  color: var(--color-faint);
+}
+
+/* 차트 */
+.chartBody {
+  padding: 6px 0 2px;
+}
+
+/* 떠오르는 업종 */
+.risingList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.risingRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px 14px;
+  background: var(--color-chip);
+  border-radius: var(--radius);
+}
+.rankBadge {
+  flex: none;
+  width: 26px;
+  height: 26px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-num);
+}
+.risingName {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.risingMetric {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 64px;
+}
+.risingMetricLabel {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.risingMetricValue {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--color-text);
+  font-family: var(--font-num);
+}
+
+/* 상태 */
+.empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+.skeleton {
+  height: 240px;
+  border-radius: var(--radius);
+  background: linear-gradient(
+    90deg,
+    var(--color-line) 25%,
+    var(--color-chip) 50%,
+    var(--color-line) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

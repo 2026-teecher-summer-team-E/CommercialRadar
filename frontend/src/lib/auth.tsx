@@ -24,6 +24,7 @@ export interface AuthUser {
   name: string;
   email: string | null;
   isCompany: boolean;
+  isAdmin: boolean;
 }
 
 interface AuthState {
@@ -59,6 +60,7 @@ function useBackendUser(active: boolean) {
             name: r.data.name,
             email: r.data.email,
             isCompany: r.data.is_company,
+            isAdmin: r.data.is_admin,
           });
       })
       .catch(() => {

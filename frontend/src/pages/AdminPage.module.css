@@ -1,0 +1,95 @@
+.page {
+  padding: 28px 32px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* 권한 없음 상태 */
+.denied {
+  padding: 64px 24px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  text-align: center;
+}
+.deniedTitle {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.deniedText {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-muted);
+  max-width: 420px;
+}
+.homeLink {
+  margin-top: 8px;
+  display: inline-flex;
+  align-items: center;
+  padding: 9px 18px;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+}
+.homeLink:hover {
+  background: var(--color-primary-dark);
+}
+
+/* 타이틀 */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+/* 시스템 상태 요약 카드 */
+.statusRow {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.statusCard {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow-card);
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.statusLabel {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.statusValue {
+  font-family: var(--font-num);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.statusHint {
+  font-size: 12px;
+  color: var(--color-faint);
+}
+.statusValueOk {
+  color: var(--color-green);
+}

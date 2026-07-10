@@ -1,0 +1,145 @@
+.console {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px 28px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.consoleHead {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.consoleTitle {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.consoleDesc {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* 필드 공통 */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.fieldLabel {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-body);
+}
+
+/* 인제스천 대상 선택 */
+.targetGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 10px;
+}
+.targetItem {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+.targetItemActive {
+  border-color: var(--color-primary);
+  background: var(--color-primary-light);
+}
+.targetRadio {
+  margin-top: 2px;
+  accent-color: var(--color-primary);
+}
+.targetText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.targetName {
+  font-family: var(--font-num);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+.targetHint {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* 키 입력 */
+.keyInput {
+  padding: 10px 12px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text);
+  font-family: var(--font-num);
+  font-size: 14px;
+}
+.keyInput:focus {
+  outline: none;
+  border-color: var(--color-primary);
+}
+.keyNote {
+  font-size: 12px;
+  color: var(--color-faint);
+}
+
+/* 실행 영역 */
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
+.runBtn {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.runBtn:hover:not(:disabled) {
+  background: var(--color-primary-dark);
+}
+.runBtn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* 결과 상태 배너 */
+.result {
+  padding: 12px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.resultOk {
+  background: var(--color-green-bg);
+  color: var(--color-green);
+}
+.resultErr {
+  background: var(--color-orange-bg);
+  color: var(--color-red);
+}
+.resultMuted {
+  background: var(--color-chip);
+  color: var(--color-muted);
+}
