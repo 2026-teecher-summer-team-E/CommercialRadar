@@ -1,3 +1,5 @@
+import json
+
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
@@ -73,6 +75,50 @@ def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db))
         .all()
     )
     return [DistrictGeoOut(**row) for row in rows]
+
+
+@router.get("/commercial-districts/geojson")
+def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_db)):
+    """상권 경계 폴리곤을 GeoJSON FeatureCollection 으로 반환(Leaflet 구역 표시용).
+
+    ST_SimplifyPreserveTopology 로 단순화(≈30m)하고 좌표 정밀도 6자리로 낮춰 용량을 줄인다.
+    gu_name 으로 자치구 필터 가능.
+    """
+    where = "geometry IS NOT NULL AND is_deleted = false"
+    params: dict[str, str] = {}
+    if gu_name:
+        where += " AND gu_name = :gu"
+        params["gu"] = gu_name
+    rows = (
+        db.execute(
+            text(
+                f"""
+                SELECT id, district_name, type_name, gu_name,
+                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(geometry, 0.0003), 6) AS geojson
+                FROM commercial_district
+                WHERE {where}
+                """
+            ),
+            params,
+        )
+        .mappings()
+        .all()
+    )
+    features = [
+        {
+            "type": "Feature",
+            "geometry": json.loads(r["geojson"]),
+            "properties": {
+                "id": r["id"],
+                "district_name": r["district_name"],
+                "type_name": r["type_name"],
+                "gu_name": r["gu_name"],
+            },
+        }
+        for r in rows
+        if r["geojson"]
+    ]
+    return {"type": "FeatureCollection", "features": features}
 
 
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
