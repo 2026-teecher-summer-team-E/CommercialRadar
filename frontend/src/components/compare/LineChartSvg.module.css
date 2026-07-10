@@ -1,0 +1,18 @@
+.svg {
+  display: block;
+}
+.grid {
+  stroke: var(--color-line);
+  stroke-width: 1;
+}
+.axisLabel {
+  font-family: var(--font-num);
+  font-size: 11px;
+  fill: var(--color-muted);
+}
+.line {
+  fill: none;
+  stroke-width: 2;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}

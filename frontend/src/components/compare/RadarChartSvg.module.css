@@ -1,0 +1,18 @@
+.svg {
+  display: block;
+  overflow: visible;
+}
+.ring {
+  fill: none;
+  stroke: var(--color-line);
+  stroke-width: 1;
+}
+.axis {
+  stroke: var(--color-border);
+  stroke-width: 1;
+}
+.label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  fill: var(--color-muted);
+}

@@ -1,0 +1,203 @@
+.page {
+  padding: 28px 32px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.state {
+  padding: 48px 24px;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+
+/* 1. 타이틀 */
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.subtitle {
+  margin: 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+
+/* 2. 프로필 히어로 */
+.hero {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 24px 28px;
+}
+
+.heroTop {
+  display: flex;
+  align-items: flex-start;
+  gap: 18px;
+}
+
+.avatar {
+  flex: 0 0 auto;
+  width: 64px;
+  height: 64px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+  color: #ffffff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-num);
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.heroInfo {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.heroNameRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.heroName {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.badgeCompany,
+.badgeNormal {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 12px;
+  border-radius: var(--radius-pill);
+  font-size: 12px;
+  font-weight: 600;
+}
+.badgeCompany {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+.badgeNormal {
+  background: var(--color-chip);
+  color: var(--color-muted);
+}
+
+.heroEmail {
+  margin: 8px 0 0;
+  font-family: var(--font-num);
+  font-size: 14px;
+  color: var(--color-muted);
+}
+.heroJoined {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-faint);
+}
+
+.settingsBtn {
+  flex: 0 0 auto;
+  padding: 9px 16px;
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface);
+  color: var(--color-text-body);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.settingsBtn:hover {
+  background: var(--color-bg);
+}
+
+.statsRow {
+  display: flex;
+  align-items: stretch;
+  margin-top: 22px;
+  padding-top: 22px;
+  border-top: 1px solid var(--color-line);
+}
+.statCell {
+  flex: 1 1 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+.statNum {
+  font-family: var(--font-num);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.statLabel {
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.statDivider {
+  width: 1px;
+  align-self: stretch;
+  background: var(--color-line);
+}
+
+/* 3. 세그먼트 컨트롤 */
+.segment {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 4px;
+  padding: 4px;
+  background: var(--color-chip);
+  border-radius: var(--radius-pill);
+}
+.segBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.segBtnActive {
+  background: var(--color-surface);
+  color: var(--color-text);
+  box-shadow: var(--shadow-card);
+}
+.segCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg);
+  color: var(--color-muted);
+  font-family: var(--font-num);
+  font-size: 12px;
+  font-weight: 700;
+}
+.segBtnActive .segCount {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+
+/* 4/5. 탭 콘텐츠 */
+.tabContent {
+  min-height: 120px;
+}
