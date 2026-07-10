@@ -98,3 +98,38 @@ class CategoryRankingResponse(BaseModel):
         None, description="조회된 분기. 생략 시 해당 상권의 최신 분기가 자동 선택됨", examples=["2024-Q4"]
     )
     ranking: list[CategoryRankingItem] = Field(..., description="district_score 내림차순으로 정렬된 업종 랭킹")
+
+
+class HeatmapSlot(BaseModel):
+    slot: str = Field(..., description="시간대(예: 00~06) 또는 요일(예: 월)", examples=["00~06"])
+    avg_population: float | None = Field(
+        None, ge=0, description="해당 슬롯의 평균 유동인구 수", examples=[12345.0]
+    )
+
+
+class PopulationHeatmapResponse(BaseModel):
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    by_time: list[HeatmapSlot] = Field(
+        default_factory=list,
+        description="시간대(dimension=time) 슬롯 목록. 시간 오름차순 정렬",
+    )
+    by_day: list[HeatmapSlot] = Field(
+        default_factory=list,
+        description="요일(dimension=day) 슬롯 목록. 월~일 순서",
+    )
+
+
+class RadarAxis(BaseModel):
+    key: str = Field(..., description="축 식별자", examples=["survival"])
+    label: str = Field(..., description="축 한글 라벨", examples=["생존율"])
+    value: float = Field(..., ge=0, le=100, description="0~100으로 정규화된 값(소수 1자리)", examples=[87.3])
+
+
+class RadarResponse(BaseModel):
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    year_quarter: str | None = Field(
+        None, description="산출 기준 분기. 데이터가 전무하면 null", examples=["2024-Q4"]
+    )
+    axes: list[RadarAxis] = Field(
+        ..., description="상권 강점 프로필 5축(survival, population, sales, stability, growth 순서)"
+    )
