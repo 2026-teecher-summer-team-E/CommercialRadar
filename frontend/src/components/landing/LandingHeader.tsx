@@ -13,7 +13,7 @@ export default function LandingHeader() {
         상권레이더
       </Link>
       <div className={styles.headerActions}>
-        <Link to="/" className={styles.loginLink}>
+        <Link to="/sign-in" className={styles.loginLink}>
           로그인
         </Link>
         <Link to="/" className={styles.btnPrimary}>

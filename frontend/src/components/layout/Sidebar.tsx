@@ -1,7 +1,5 @@
-import { useEffect, useState } from "react";
 import { NavLink } from "react-router-dom";
-import { meApi } from "../../services/meApi";
-import type { UserMe } from "../../types";
+import { useAuth } from "../../lib/auth";
 import styles from "./Sidebar.module.css";
 
 function MapIcon() {
@@ -61,17 +59,10 @@ const NAV = [
 ];
 
 export default function Sidebar() {
-  const [user, setUser] = useState<UserMe | null>(null);
-
-  useEffect(() => {
-    meApi
-      .me()
-      .then((r) => setUser(r.data))
-      .catch(() => setUser(null));
-  }, []);
+  const { user, isSignedIn } = useAuth();
 
   const name = user?.name ?? "게스트";
-  const plan = user ? (user.is_company ? "기업 회원" : "일반 회원") : "로그인 필요";
+  const plan = user ? (user.isCompany ? "기업 회원" : "일반 회원") : "로그인 필요";
 
   return (
     <aside className={styles.sidebar}>
@@ -103,13 +94,23 @@ export default function Sidebar() {
 
       <div className={styles.spacer} />
 
-      <NavLink to="/mypage" className={styles.profile}>
-        <span className={styles.avatar}>{name.charAt(0)}</span>
-        <span className={styles.profileInfo}>
-          <span className={styles.profileName}>{name}</span>
-          <span className={styles.profilePlan}>{plan}</span>
-        </span>
-      </NavLink>
+      {isSignedIn || user ? (
+        <NavLink to="/mypage" className={styles.profile}>
+          <span className={styles.avatar}>{name.charAt(0)}</span>
+          <span className={styles.profileInfo}>
+            <span className={styles.profileName}>{name}</span>
+            <span className={styles.profilePlan}>{plan}</span>
+          </span>
+        </NavLink>
+      ) : (
+        <NavLink to="/sign-in" className={styles.profile}>
+          <span className={styles.avatar}>?</span>
+          <span className={styles.profileInfo}>
+            <span className={styles.profileName}>로그인</span>
+            <span className={styles.profilePlan}>계정으로 시작하기</span>
+          </span>
+        </NavLink>
+      )}
     </aside>
   );
 }
