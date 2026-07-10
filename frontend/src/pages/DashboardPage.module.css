@@ -1,0 +1,371 @@
+.page {
+  padding: 26px 30px 44px;
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+/* 헤더 */
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+.title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.subtitle {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: var(--color-muted);
+}
+.reportBtn {
+  flex: none;
+  padding: 9px 16px;
+  border: none;
+  border-radius: var(--radius);
+  background: var(--color-primary);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.reportBtn:hover {
+  background: var(--color-primary-dark);
+}
+
+/* 섹션 */
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.sectionTitle {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.accentBar {
+  width: 4px;
+  align-self: stretch;
+  min-height: 34px;
+  background: var(--color-primary);
+  border-radius: var(--radius-pill);
+}
+.sectionHeading {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.sectionSub {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+
+/* 카드 */
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.cardHead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.cardSub {
+  margin: 3px 0 0;
+  font-size: 13px;
+  color: var(--color-muted);
+}
+.cardSpacer {
+  height: 14px;
+}
+.expandBtn {
+  flex: none;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  color: var(--color-muted);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.expandBtn:hover {
+  background: var(--color-chip);
+  color: var(--color-text);
+}
+
+/* 상단 2열 */
+.topGrid {
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  gap: 22px;
+}
+@media (max-width: 900px) {
+  .topGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 종합점수 카드 */
+.scoreRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.scoreBig {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.scoreNum {
+  font-size: 46px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-primary);
+  font-family: var(--font-num);
+}
+.scoreDenom {
+  font-size: 15px;
+  color: var(--color-muted);
+  font-family: var(--font-num);
+}
+.scoreBadge {
+  padding: 4px 10px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 700;
+  font-family: var(--font-num);
+}
+.radarWrap {
+  display: flex;
+  justify-content: center;
+  padding: 6px 0 10px;
+}
+.radarEmpty {
+  padding: 30px 0;
+  text-align: center;
+  color: var(--color-faint);
+  font-size: 12px;
+}
+.miniGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-top: 4px;
+}
+.miniStat {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 10px 12px;
+  background: var(--color-chip);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.miniLabel {
+  font-size: 11px;
+  color: var(--color-muted);
+}
+.miniValue {
+  font-size: 15px;
+  font-weight: 700;
+  font-family: var(--font-num);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 생존율 예측 카드 */
+.forecastHero {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 6px;
+}
+.forecastNow,
+.forecastNext {
+  font-size: 40px;
+  font-weight: 800;
+  line-height: 1;
+  font-family: var(--font-num);
+  color: var(--color-primary);
+}
+.forecastNow {
+  color: var(--color-text);
+}
+.forecastArrow {
+  font-size: 26px;
+  color: var(--color-muted);
+}
+.forecastDelta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.deltaUp {
+  color: var(--color-green);
+  font-weight: 700;
+  font-size: 14px;
+  font-family: var(--font-num);
+}
+.deltaDown {
+  color: var(--color-red);
+  font-weight: 700;
+  font-size: 14px;
+  font-family: var(--font-num);
+}
+.forecastDeltaSub {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+/* 2열 그리드(매출/비용) */
+.duoGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 22px;
+}
+@media (max-width: 900px) {
+  .duoGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 비용 */
+.costBig {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-top: 12px;
+}
+.costNum {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-text);
+  font-family: var(--font-num);
+}
+.costUnit {
+  font-size: 15px;
+  color: var(--color-muted);
+  font-family: var(--font-num);
+}
+.rentList {
+  list-style: none;
+  margin: 16px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.rentRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--color-text-body);
+  padding: 8px 12px;
+  background: var(--color-chip);
+  border-radius: var(--radius-sm);
+}
+.rentVal {
+  font-family: var(--font-num);
+  font-weight: 600;
+}
+.riskGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+
+/* 차트 */
+.chartBody {
+  padding: 10px 0 4px;
+}
+
+/* 모달 내부 */
+.modalChart {
+  width: 100%;
+}
+.modalTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.modalTable th {
+  padding: 9px 12px;
+  font-weight: 600;
+  color: var(--color-muted);
+  border-bottom: 1px solid var(--color-border);
+}
+.modalTable td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--color-line);
+  color: var(--color-text-body);
+}
+.modalTable tbody tr:last-child td {
+  border-bottom: none;
+}
+.leftCell {
+  text-align: left;
+}
+.numCell {
+  text-align: right;
+  font-family: var(--font-num);
+}
+
+/* 상태 */
+.empty {
+  padding: 36px 20px;
+  text-align: center;
+  color: var(--color-muted);
+  font-size: 14px;
+}
+.skeletonWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.skeleton {
+  height: 180px;
+  border-radius: var(--radius-lg);
+  background: linear-gradient(90deg, var(--color-line) 25%, var(--color-chip) 50%, var(--color-line) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s ease-in-out infinite;
+}
+@keyframes shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
