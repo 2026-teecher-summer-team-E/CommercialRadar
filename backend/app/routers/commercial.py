@@ -1,11 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, status
-from sqlalchemy import func, or_
+from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
-from app.schemas.commercial import CommercialDistrictDetailOut, CommercialDistrictSearchOut, LatestStatsOut
+from app.schemas.commercial import (
+    CommercialDistrictDetailOut,
+    CommercialDistrictSearchOut,
+    DistrictGeoOut,
+    LatestStatsOut,
+)
 
 router = APIRouter(tags=["commercial"])
 
@@ -41,6 +46,33 @@ def list_commercial_districts(
     db: Session = Depends(get_db),
 ):
     return {"status": "ok"}
+
+
+@router.get("/commercial-districts/geo", response_model=list[DistrictGeoOut])
+def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db)):
+    """모든 상권의 중심좌표(geometry centroid). Leaflet 지도 마커용. gu_name 으로 자치구 필터 가능."""
+    where = "geometry IS NOT NULL AND is_deleted = false"
+    params: dict[str, str] = {}
+    if gu_name:
+        where += " AND gu_name = :gu"
+        params["gu"] = gu_name
+    rows = (
+        db.execute(
+            text(
+                f"""
+                SELECT id, district_name, type_name, gu_name,
+                       ST_Y(ST_Centroid(geometry)) AS lat,
+                       ST_X(ST_Centroid(geometry)) AS lng
+                FROM commercial_district
+                WHERE {where}
+                """
+            ),
+            params,
+        )
+        .mappings()
+        .all()
+    )
+    return [DistrictGeoOut(**row) for row in rows]
 
 
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
