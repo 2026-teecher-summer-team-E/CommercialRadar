@@ -424,8 +424,13 @@ def get_population_age(district_id: int, db: Session = Depends(get_db)):
     if total <= 0:
         return {"district_id": district_id, "year_quarter": latest_q, "slices": []}
 
-    slices = [
-        {"name": slot, "pct": round((v or 0.0) / total * 100)}
-        for slot, v in rows
-    ]
+    # 최대 나머지법(largest remainder): 개별 반올림 시 합이 100을 벗어나는 문제 방지.
+    raw = [(slot, (v or 0.0) / total * 100) for slot, v in rows]
+    floored = [(slot, int(pct), pct - int(pct)) for slot, pct in raw]
+    remainder = 100 - sum(f for _, f, _ in floored)
+    floored.sort(key=lambda item: item[2], reverse=True)
+    slices_map = {slot: f for slot, f, _ in floored}
+    for slot, _, _ in floored[:remainder]:
+        slices_map[slot] += 1
+    slices = [{"name": slot, "pct": slices_map[slot]} for slot, _ in raw]
     return {"district_id": district_id, "year_quarter": latest_q, "slices": slices}
