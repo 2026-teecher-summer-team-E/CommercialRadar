@@ -1,8 +1,13 @@
+from typing import Literal
+
 from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
+from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
+from app.models.population_timeseries import PopulationTimeseries
 from app.models.ml_predictions import AGGREGATE_CATEGORY, MlPrediction
 from app.schemas.ml import (
     PopulationForecastPoint,
@@ -265,3 +270,167 @@ def get_population_forecast(
         model=model_version,
         forecast=forecast,
     )
+
+
+@router.get("/commercial-districts/{district_id}/timeseries")
+def get_timeseries(
+    district_id: int,
+    metric: Literal["sales", "survival"] = Query(...),
+    category_name: str | None = None,
+    cumulative: bool = False,
+    db: Session = Depends(get_db),
+):
+    """과거 실적(business_category) + 예측(ml_predictions)을 한 번에 반환.
+
+    과거→예측 꺾은선 차트용. 생존율은 과거·예측 단위를 0~1 비율로 통일한다.
+    category_name 미지정 시 과거는 전 업종 집계, 예측은 __ALL__ 행을 쓴다.
+    cumulative=true & metric=survival이면 분기 생존율을 복리로 누적한다(생존 곡선).
+    """
+    exists = (
+        db.query(CommercialDistrict.id)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    if metric == "sales":
+        value_expr = func.sum(BusinessCategory.total_sales)
+        unit = "won"
+        prediction_type = PREDICTION_TYPE_SALES
+        predicted_key = "total_sales"
+    else:  # survival: 0~100 백분율 → clip 후 평균 → 0~1 비율
+        clipped = func.least(func.greatest(BusinessCategory.survival_rate, 0.0), 100.0)
+        value_expr = func.avg(clipped) / 100.0
+        unit = "ratio"
+        prediction_type = PREDICTION_TYPE_SURVIVAL
+        predicted_key = "survival_rate"
+
+    history_q = db.query(BusinessCategory.year_quarter, value_expr).filter(
+        BusinessCategory.commercial_district_id == district_id,
+        BusinessCategory.is_deleted == False,  # noqa: E712
+    )
+    if category_name is not None:
+        history_q = history_q.filter(BusinessCategory.category_name == category_name)
+    history_q = (
+        history_q.group_by(BusinessCategory.year_quarter)
+        .order_by(BusinessCategory.year_quarter.asc())
+    )
+    history = [
+        {"year_quarter": yq, "value": float(v) if v is not None else None}
+        for yq, v in history_q.all()
+    ]
+
+    target_category = category_name if category_name is not None else AGGREGATE_CATEGORY
+    forecast_rows = (
+        db.query(MlPrediction)
+        .filter(
+            MlPrediction.commercial_district_id == district_id,
+            MlPrediction.prediction_type == prediction_type,
+            MlPrediction.category_name == target_category,
+            MlPrediction.is_deleted == False,  # noqa: E712
+        )
+        .order_by(MlPrediction.target_quarter.asc())
+        .all()
+    )
+    forecast = []
+    for row in forecast_rows:
+        pv = row.predicted_value or {}
+        scenarios = pv.get("scenarios") or {}
+        mid = scenarios.get("mid", pv.get(predicted_key))
+        low = scenarios.get("low", mid)
+        high = scenarios.get("high", mid)
+        forecast.append({
+            "year_quarter": row.target_quarter,
+            "value": mid,
+            "low": low,
+            "mid": mid,
+            "high": high,
+            "confidence": row.confidence,
+        })
+
+    if cumulative and metric == "survival":
+        run = 1.0
+        for point in history:
+            if point["value"] is not None:
+                run *= point["value"]
+                point["value"] = round(run, 6)
+        cum_low = cum_mid = cum_high = run
+        for point in forecast:
+            low, mid, high = point["low"], point["mid"], point["high"]
+            cum_mid *= mid if mid is not None else 1.0
+            cum_low *= low if low is not None else 1.0
+            cum_high *= high if high is not None else 1.0
+            point["low"] = round(cum_low, 6)
+            point["mid"] = round(cum_mid, 6)
+            point["high"] = round(cum_high, 6)
+            point["value"] = point["mid"]
+
+    return {
+        "district_id": district_id,
+        "category_name": category_name,
+        "metric": metric,
+        "unit": unit,
+        "history": history,
+        "forecast": forecast,
+    }
+
+
+@router.get("/commercial-districts/{district_id}/population-age")
+def get_population_age(district_id: int, db: Session = Depends(get_db)):
+    """상권의 최신 관측 분기 연령 구성비(%)를 반환.
+
+    미래 연령분포 예측 데이터는 없으므로, 관측 구성비를 미래 예상치의 대용으로 쓴다.
+    구성비는 분기별로 안정적이라는 가정이며 총 유동인구만 별도로 예측된다.
+    """
+    exists = (
+        db.query(CommercialDistrict.id)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    latest_q = (
+        db.query(func.max(PopulationTimeseries.year_quarter))
+        .filter(
+            PopulationTimeseries.commercial_district_id == district_id,
+            PopulationTimeseries.dimension == "age",
+            PopulationTimeseries.is_deleted == False,  # noqa: E712
+        )
+        .scalar()
+    )
+    if latest_q is None:
+        return {"district_id": district_id, "year_quarter": None, "slices": []}
+
+    rows = (
+        db.query(PopulationTimeseries.slot, PopulationTimeseries.avg_population)
+        .filter(
+            PopulationTimeseries.commercial_district_id == district_id,
+            PopulationTimeseries.dimension == "age",
+            PopulationTimeseries.year_quarter == latest_q,
+            PopulationTimeseries.is_deleted == False,  # noqa: E712
+        )
+        .order_by(PopulationTimeseries.slot.asc())  # 연령 막대/범례 순서 결정적화
+        .all()
+    )
+    total = sum((v or 0.0) for _, v in rows)
+    if total <= 0:
+        return {"district_id": district_id, "year_quarter": latest_q, "slices": []}
+
+    # 최대 나머지법(largest remainder): 개별 반올림 시 합이 100을 벗어나는 문제 방지.
+    raw = [(slot, (v or 0.0) / total * 100) for slot, v in rows]
+    floored = [(slot, int(pct), pct - int(pct)) for slot, pct in raw]
+    remainder = 100 - sum(f for _, f, _ in floored)
+    floored.sort(key=lambda item: item[2], reverse=True)
+    slices_map = {slot: f for slot, f, _ in floored}
+    for slot, _, _ in floored[:remainder]:
+        slices_map[slot] += 1
+    slices = [{"name": slot, "pct": slices_map[slot]} for slot, _ in raw]
+    return {"district_id": district_id, "year_quarter": latest_q, "slices": slices}
