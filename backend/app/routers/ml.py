@@ -417,6 +417,7 @@ def get_population_age(district_id: int, db: Session = Depends(get_db)):
             PopulationTimeseries.year_quarter == latest_q,
             PopulationTimeseries.is_deleted == False,  # noqa: E712
         )
+        .order_by(PopulationTimeseries.slot.asc())  # 연령 막대/범례 순서 결정적화
         .all()
     )
     total = sum((v or 0.0) for _, v in rows)
