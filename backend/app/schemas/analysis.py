@@ -103,7 +103,7 @@ class CategoryRankingResponse(BaseModel):
 class HeatmapSlot(BaseModel):
     slot: str = Field(..., description="시간대(예: 00~06) 또는 요일(예: 월)", examples=["00~06"])
     avg_population: float | None = Field(
-        None, description="해당 슬롯의 평균 유동인구 수", examples=[12345.0]
+        None, ge=0, description="해당 슬롯의 평균 유동인구 수", examples=[12345.0]
     )
 
 
@@ -122,7 +122,7 @@ class PopulationHeatmapResponse(BaseModel):
 class RadarAxis(BaseModel):
     key: str = Field(..., description="축 식별자", examples=["survival"])
     label: str = Field(..., description="축 한글 라벨", examples=["생존율"])
-    value: float = Field(..., description="0~100으로 정규화된 값(소수 1자리)", examples=[87.3])
+    value: float = Field(..., ge=0, le=100, description="0~100으로 정규화된 값(소수 1자리)", examples=[87.3])
 
 
 class RadarResponse(BaseModel):
