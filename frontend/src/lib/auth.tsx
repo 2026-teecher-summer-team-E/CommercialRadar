@@ -134,6 +134,6 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   const { isLoaded, isSignedIn } = useAuth();
   if (!clerkEnabled) return <>{children}</>;
   if (!isLoaded) return null;
-  if (!isSignedIn) return <Navigate to="/sign-in" replace />;
+  if (!isSignedIn) return <Navigate to="/landing" replace />;
   return <>{children}</>;
 }

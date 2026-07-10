@@ -6,6 +6,10 @@ interface SangkwonLayerProps {
   activeName: string | null;
   activeScore: number | null;
   onSearchArea: () => void;
+  /** 핀 클릭(선택). */
+  onSelectPin: (id: number) => void;
+  /** 상권 프로필(대시보드)로 이동. */
+  onOpenProfile: (id: number) => void;
 }
 
 /**
@@ -20,6 +24,8 @@ export default function SangkwonLayer({
   activeName,
   activeScore,
   onSearchArea,
+  onSelectPin,
+  onOpenProfile,
 }: SangkwonLayerProps) {
   return (
     <section className={styles.mapArea} aria-label="상권 지도(목업)">
@@ -61,18 +67,40 @@ export default function SangkwonLayer({
         </button>
       </div>
 
-      {/* 점수 핀 */}
+      {/* 점수 핀 (클릭: 미선택→선택, 선택됨→프로필 이동) */}
       {pins.map((pin) => (
         <div
           key={pin.id}
+          role="button"
+          tabIndex={0}
+          title={pin.active ? `${pin.name} 프로필 보기` : `${pin.name} 선택`}
           className={`${styles.pin} ${pin.active ? styles.pinActive : ""}`}
-          style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+          style={{ left: `${pin.x}%`, top: `${pin.y}%`, cursor: "pointer" }}
+          onClick={() => (pin.active ? onOpenProfile(pin.id) : onSelectPin(pin.id))}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              pin.active ? onOpenProfile(pin.id) : onSelectPin(pin.id);
+            }
+          }}
         >
           {pin.active && (
             <div className={styles.pinCallout}>
               <span className={styles.pinCalloutName}>{pin.name}</span>
               <span className={styles.pinCalloutScore}>
                 상권점수 <b>{pin.score ?? "-"}</b>
+              </span>
+              <span
+                style={{
+                  display: "block",
+                  marginTop: "3px",
+                  fontSize: "11px",
+                  fontWeight: 700,
+                  color: "#fff",
+                  opacity: 0.9,
+                }}
+              >
+                상세 프로필 보기 →
               </span>
             </div>
           )}

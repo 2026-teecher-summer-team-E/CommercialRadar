@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
 import { commercialApi } from "../services/commercialApi";
 import SangkwonPanel from "../components/map/SangkwonPanel";
@@ -19,6 +20,8 @@ const DEFAULT_DISTRICT_ID = 1;
 const FALLBACK_PIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
 
 export default function MapPage() {
+  const navigate = useNavigate();
+  const openProfile = (id: number) => navigate(`/dashboard/${id}`);
   const [selectedId, setSelectedId] = useState<number>(DEFAULT_DISTRICT_ID);
   const [summary, setSummary] = useState<DistrictSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -172,12 +175,15 @@ export default function MapPage() {
           options={panelOptions}
           selectedId={selectedId}
           onSelect={setSelectedId}
+          onOpenProfile={openProfile}
         />
         <SangkwonLayer
           pins={pins}
           activeName={activePin?.name ?? summary?.detail?.district_name ?? null}
           activeScore={activePin?.score ?? null}
           onSearchArea={() => setQuery(query || "강남")}
+          onSelectPin={setSelectedId}
+          onOpenProfile={openProfile}
         />
       </div>
     </div>

@@ -21,6 +21,8 @@ interface SangkwonPanelProps {
   options: DistrictSearchResult[];
   selectedId: number;
   onSelect: (id: number) => void;
+  /** 상권 프로필(대시보드)로 이동. */
+  onOpenProfile: (id: number) => void;
 }
 
 const FILTER_TYPES = ["전체", "한식", "카페", "편의점", "의류"] as const;
@@ -33,6 +35,7 @@ export default function SangkwonPanel({
   options,
   selectedId,
   onSelect,
+  onOpenProfile,
 }: SangkwonPanelProps) {
   const detail = summary?.detail ?? null;
   const stats = detail?.latest_stats ?? null;
@@ -131,6 +134,26 @@ export default function SangkwonPanel({
               {grade.label}
             </span>
           </div>
+
+          <button
+            type="button"
+            onClick={() => onOpenProfile(detail.id)}
+            style={{
+              width: "100%",
+              marginTop: "12px",
+              padding: "11px",
+              borderRadius: "var(--radius-sm)",
+              background: "var(--color-primary)",
+              color: "#fff",
+              border: "none",
+              fontWeight: 700,
+              fontSize: "13px",
+              fontFamily: "inherit",
+              cursor: "pointer",
+            }}
+          >
+            상세 프로필 보기 →
+          </button>
 
           <div className={styles.divider} />
 
