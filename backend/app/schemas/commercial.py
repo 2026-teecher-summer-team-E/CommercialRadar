@@ -55,3 +55,14 @@ class NearbyDistrictOut(BaseModel):
     type_name: str | None = None
     gu_name: str | None = None
     distance_meters: float
+
+
+class DistrictGeoOut(BaseModel):
+    """상권 중심좌표(geometry centroid). Leaflet 지도 마커용."""
+
+    id: int
+    district_name: str
+    type_name: str | None = None
+    gu_name: str | None = None
+    lat: float
+    lng: float
