@@ -1,0 +1,89 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.head {
+  margin-bottom: 12px;
+}
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.sub {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.headline {
+  margin: 0 0 16px;
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--color-primary);
+}
+
+.gaugeRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.gaugeLabel {
+  font-size: 12px;
+  color: var(--color-text-body);
+}
+.gaugeTrack {
+  position: relative;
+  height: 12px;
+  background: var(--color-line);
+  border-radius: var(--radius-pill);
+}
+.gaugeFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}
+.gapTagPos,
+.gapTagNeg {
+  position: absolute;
+  top: 50%;
+  right: 4px;
+  transform: translateY(-50%);
+  padding: 2px 8px;
+  border-radius: var(--radius-pill);
+  font-size: 11px;
+  font-weight: 700;
+  font-family: var(--font-num);
+}
+.gapTagPos {
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+}
+.gapTagNeg {
+  background: var(--color-orange-bg);
+  color: var(--color-orange);
+}
+
+.warn,
+.info {
+  margin-top: auto;
+  padding: 12px 14px;
+  border-radius: var(--radius);
+  font-size: 13px;
+  font-weight: 600;
+}
+.warn {
+  background: var(--color-orange-bg);
+  color: var(--color-red);
+}
+.info {
+  background: var(--color-chip);
+  color: var(--color-muted);
+}

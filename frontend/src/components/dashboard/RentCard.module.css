@@ -1,0 +1,87 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.sub {
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.big {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  margin-bottom: 12px;
+}
+.num {
+  font-size: 34px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-text);
+  font-family: var(--font-num);
+}
+.unit {
+  font-size: 16px;
+  color: var(--color-muted);
+  font-family: var(--font-num);
+}
+.tag {
+  align-self: flex-start;
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-orange-bg);
+  color: var(--color-orange);
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.note {
+  margin: 0 0 10px;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.barsLabel {
+  margin: 0 0 6px;
+  font-size: 11px;
+  color: var(--color-faint);
+}
+.bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  height: 56px;
+}
+.barCol {
+  flex: 1 1 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.bar,
+.barTop {
+  width: 100%;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+}
+.bar {
+  background: var(--color-primary-soft);
+}
+.barTop {
+  background: var(--color-primary);
+}

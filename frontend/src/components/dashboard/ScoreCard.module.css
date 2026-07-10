@@ -1,0 +1,231 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+}
+.head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-muted);
+}
+.expandBtn {
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  border-radius: var(--radius-sm);
+  width: 30px;
+  height: 30px;
+  font-size: 15px;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+.expandBtn:hover {
+  background: var(--color-chip);
+  color: var(--color-text);
+}
+
+.scoreRow {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.scoreBig {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.scoreNum {
+  font-size: 52px;
+  font-weight: 800;
+  line-height: 1;
+  color: var(--color-primary);
+  font-family: var(--font-num);
+}
+.scoreDenom {
+  font-size: 16px;
+  color: var(--color-muted);
+  font-family: var(--font-num);
+}
+.topPill {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 13px;
+  font-weight: 700;
+  font-family: var(--font-num);
+}
+
+.constructLabel {
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-bottom: 6px;
+}
+.badgeRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+.badge {
+  padding: 5px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+.badge strong {
+  font-family: var(--font-num);
+  font-weight: 700;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background: var(--color-primary-light);
+  border-radius: var(--radius);
+  margin-bottom: 16px;
+}
+.avatar {
+  flex: none;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+.avatarInitials {
+  font-size: 24px;
+  font-weight: 800;
+}
+.avatarSub {
+  font-size: 10px;
+  opacity: 0.85;
+}
+.identityBody {
+  min-width: 0;
+}
+.identityName {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--color-text);
+}
+.identityType {
+  margin: 4px 0 0;
+  font-size: 13px;
+  color: var(--color-text-body);
+}
+.identityRegion {
+  margin: 3px 0 0;
+  font-size: 12px;
+  color: var(--color-muted);
+}
+.identityLink {
+  display: inline-block;
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--color-primary);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pillRow {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.pill {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 12px 8px;
+  background: var(--color-chip);
+  border-radius: var(--radius);
+  min-width: 0;
+}
+.pillLabel,
+.pillLabelDot {
+  font-size: 11px;
+  color: var(--color-muted);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.pillValue {
+  font-size: 16px;
+  font-weight: 700;
+  font-family: var(--font-num);
+  color: var(--color-text);
+  white-space: nowrap;
+}
+
+.growthRow {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+.growthTag {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 600;
+}
+.peakTag {
+  padding: 4px 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-orange-bg);
+  color: var(--color-orange);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.flowLabels {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--color-muted);
+  margin-bottom: 6px;
+}
+.flowBar {
+  height: 12px;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary-soft);
+  overflow: hidden;
+}
+.flowFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--color-primary);
+}

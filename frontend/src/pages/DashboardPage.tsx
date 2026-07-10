@@ -4,19 +4,21 @@ import { apiClient } from "../lib/apiClient";
 import { commercialApi } from "../services/commercialApi";
 import { mlApi } from "../services/mlApi";
 import type {
-  RadarResponse,
   PopulationHeatmapResponse,
   DistrictTimeSeriesResponse,
-  CategoryRankingResponse,
   SurvivalForecastResponse,
 } from "../types";
-import RadarChart from "../components/charts/RadarChart";
-import ForecastChart from "../components/charts/ForecastChart";
 import type { ForecastPoint } from "../components/charts/ForecastChart";
+import ScoreCard from "../components/dashboard/ScoreCard";
+import SurvivalCard from "../components/dashboard/SurvivalCard";
 import PopulationHeatmap from "../components/dashboard/PopulationHeatmap";
-import BusinessCategory from "../components/dashboard/BusinessCategory";
+import AgeGenderCard from "../components/dashboard/AgeGenderCard";
+import RentCard from "../components/dashboard/RentCard";
+import type { RentBar } from "../components/dashboard/RentCard";
+import BuzzGapCard from "../components/dashboard/BuzzGapCard";
+import { DayNightCard, ForeignCard, PerCapitaCard, WeekendCard } from "../components/dashboard/StatCards";
 import ExpandModal from "../components/dashboard/ExpandModal";
-import { fmtNum, fmtPct, fmtManUnit, fmtInt, closureRiskLabel, riskColor, quarterLabel, quarterShort } from "../components/dashboard/format";
+import { quarterShort } from "../components/dashboard/format";
 import styles from "./DashboardPage.module.css";
 
 /** getDistrict 응답(서비스가 제네릭 없이 any 반환) — 페이지 내부 로컬 타입. */
@@ -37,7 +39,7 @@ interface DistrictDetail {
   latest_stats: DistrictLatestStats | null;
 }
 
-/** 임대료 응답(전용 서비스 없음). */
+/** 임대료 응답(전용 서비스 없음). avg_rent_per_sqm 는 원 단위. */
 interface RentStat {
   floor_type: string | null;
   avg_rent_per_sqm: number | null;
@@ -48,21 +50,50 @@ interface RentResponse {
   rent_stats: RentStat[];
 }
 
-interface DashboardData {
-  district: DistrictDetail | null;
-  radar: RadarResponse | null;
-  heatmap: PopulationHeatmapResponse | null;
-  timeSeries: DistrictTimeSeriesResponse | null;
-  ranking: CategoryRankingResponse | null;
-  forecast: SurvivalForecastResponse | null;
-  rent: RentResponse | null;
+/** 화제성 Gap 응답(전용 서비스 없음). */
+interface BuzzGapItem {
+  district_name: string;
+  gu_name: string | null;
+  buzz_index: number;
+  foot_pctl: number;
+  spend_pctl: number;
+  visit_gap: number;
+  spend_gap: number;
+}
+interface BuzzGapResponse {
+  period: string | null;
+  source: string;
+  items: BuzzGapItem[];
 }
 
-const EXPAND_ICON = "⤢";
+interface DashboardData {
+  district: DistrictDetail | null;
+  heatmap: PopulationHeatmapResponse | null;
+  tsAge: DistrictTimeSeriesResponse | null;
+  tsGender: DistrictTimeSeriesResponse | null;
+  forecast: SurvivalForecastResponse | null;
+  rent: RentResponse | null;
+  buzz: BuzzGapResponse | null;
+}
 
 /** allSettled 결과에서 값만 안전 추출. */
 function pick<T>(r: PromiseSettledResult<{ data: T }>): T | null {
   return r.status === "fulfilled" ? r.value.data : null;
+}
+
+/** 최신 분기의 population.breakdown[dimension] 추출 ({slot: value}). */
+function lastBreakdown(ts: DistrictTimeSeriesResponse | null, dim: string): Record<string, number> | null {
+  const rows = ts?.data ?? [];
+  if (rows.length === 0) return null;
+  const last = rows[rows.length - 1];
+  const bd = last.population?.breakdown ?? null;
+  return bd?.[dim] ?? null;
+}
+
+/** 백분위(0~100, 높을수록 상위) → 상위 % 표기값(작을수록 상위). */
+function toTopPct(pctl: number | null | undefined): number | null {
+  if (pctl == null) return null;
+  return Math.max(1, 100 - Math.round(pctl));
 }
 
 export default function DashboardPage() {
@@ -84,30 +115,29 @@ export default function DashboardPage() {
 
     Promise.allSettled([
       commercialApi.getDistrict(id),
-      commercialApi.radar(id),
       commercialApi.heatmap(id),
-      commercialApi.timeSeries(id),
-      commercialApi.categoryRanking(id),
+      commercialApi.timeSeries(id, { metrics: "population", breakdown: "age" }),
+      commercialApi.timeSeries(id, { metrics: "population", breakdown: "gender" }),
       mlApi.survivalForecast(id),
       apiClient.get<RentResponse>(`/api/commercial-districts/${id}/rent`),
+      apiClient.get<BuzzGapResponse>("/api/buzz-gap"),
     ])
       .then((results) => {
         if (!alive) return;
-        const [districtR, radarR, heatmapR, tsR, rankingR, forecastR, rentR] = results;
+        const [districtR, heatmapR, tsAgeR, tsGenderR, forecastR, rentR, buzzR] = results;
         const district = pick<DistrictDetail>(districtR);
-        // 상세조차 못 불러오면 에러 상태로.
         if (!district) {
           setError(true);
           return;
         }
         setData({
           district,
-          radar: pick<RadarResponse>(radarR),
           heatmap: pick<PopulationHeatmapResponse>(heatmapR),
-          timeSeries: pick<DistrictTimeSeriesResponse>(tsR),
-          ranking: pick<CategoryRankingResponse>(rankingR),
+          tsAge: pick<DistrictTimeSeriesResponse>(tsAgeR),
+          tsGender: pick<DistrictTimeSeriesResponse>(tsGenderR),
           forecast: pick<SurvivalForecastResponse>(forecastR),
           rent: pick<RentResponse>(rentR),
+          buzz: pick<BuzzGapResponse>(buzzR),
         });
       })
       .catch(() => {
@@ -123,12 +153,12 @@ export default function DashboardPage() {
   }, [id]);
 
   // ── 파생 값 ─────────────────────────────────────────────
-  const stats = data?.district?.latest_stats ?? null;
+  const d = data?.district ?? null;
+  const stats = d?.latest_stats ?? null;
 
   const forecastPoints: ForecastPoint[] = useMemo(() => {
     const fc = data?.forecast?.forecast ?? [];
     const pts: ForecastPoint[] = [];
-    // 현재값(실적)을 앞에 붙여 실선→점선 연결.
     if (stats?.survival_rate != null && stats.year_quarter) {
       pts.push({ label: quarterShort(stats.year_quarter), value: stats.survival_rate, forecast: false });
     }
@@ -141,20 +171,61 @@ export default function DashboardPage() {
   const forecastLast = data?.forecast?.forecast?.[data.forecast.forecast.length - 1] ?? null;
   const forecastDelta =
     stats?.survival_rate != null && forecastLast?.survival_rate != null
-      ? forecastLast.survival_rate - stats.survival_rate
+      ? Number((forecastLast.survival_rate - stats.survival_rate).toFixed(1))
       : null;
 
-  const trendSalesPoints = useMemo(() => {
-    const rows = data?.timeSeries?.data ?? [];
-    return rows.map((r) => ({ label: quarterShort(r.year_quarter), value: r.sales }));
+  // 연령 분포(실데이터, dimension="age"). 성별 marginal 은 {남성:총,여성:총} 총량뿐이라
+  // 연령×성별 세부는 DB 에 없다. 연령 막대는 성별 비율로 스케일해 토글을 표현한다.
+  const ageDist = useMemo(() => lastBreakdown(data?.tsAge ?? null, "age") ?? null, [data]);
+  const genderDist = useMemo(() => lastBreakdown(data?.tsGender ?? null, "gender") ?? null, [data]);
+  const { femaleDist, maleDist } = useMemo(() => {
+    if (!ageDist) return { femaleDist: null, maleDist: null };
+    const f = genderDist?.["여성"] ?? 0;
+    const m = genderDist?.["남성"] ?? 0;
+    const tot = f + m;
+    const fr = tot > 0 ? f / tot : 0.5;
+    const scale = (r: number) => Object.fromEntries(Object.entries(ageDist).map(([k, v]) => [k, v * r]));
+    return { femaleDist: scale(fr), maleDist: scale(1 - fr) };
+  }, [ageDist, genderDist]);
+
+  // 임대료 대표값 + 층별 막대.
+  const rentBars: RentBar[] = useMemo(() => {
+    const rows = data?.rent?.rent_stats ?? [];
+    return rows.map((r) => ({ label: r.floor_type ?? "—", value: r.avg_rent_per_sqm }));
+  }, [data]);
+  const rentRep = useMemo<RentStat | null>(() => {
+    const rows = data?.rent?.rent_stats ?? [];
+    return rows.length > 0 ? rows[0] : null;
   }, [data]);
 
-  // 임대료: 대표값(전체/평균 우선, 없으면 첫 항목).
-  const rentStat = useMemo<RentStat | null>(() => {
-    const rows = data?.rent?.rent_stats ?? [];
-    if (rows.length === 0) return null;
-    return rows[0];
+  // 화제성 Gap: 현재 상권명과 일치하는 항목.
+  const buzzItem = useMemo<BuzzGapItem | null>(() => {
+    const items = data?.buzz?.items ?? [];
+    if (!d) return null;
+    return items.find((it) => it.district_name === d.district_name) ?? null;
+  }, [data, d]);
+
+  // 유출/유입 진행바: 요일 주변분포 주중/주말 합으로 근사(없으면 74/26 목업).
+  const flow = useMemo(() => {
+    const byDay = data?.heatmap?.by_day ?? [];
+    if (byDay.length === 0) return { weekday: 74, weekend: 26 };
+    const weekdayKeys = new Set(["월", "화", "수", "목", "금"]);
+    let wk = 0;
+    let we = 0;
+    byDay.forEach((s) => {
+      const v = s.avg_population ?? 0;
+      if (weekdayKeys.has(s.slot)) wk += v;
+      else we += v;
+    });
+    const total = wk + we || 1;
+    const weekday = Math.round((wk / total) * 100);
+    return { weekday, weekend: 100 - weekday };
   }, [data]);
+
+  const region = d ? [d.gu_name, d.dong_name].filter(Boolean).join(" ") || null : null;
+  const regionLine = d
+    ? [d.gu_name, d.dong_name, d.district_name].filter(Boolean).join(" ") || null
+    : null;
 
   // ── 상태 렌더 ───────────────────────────────────────────
   if (loading) {
@@ -170,7 +241,7 @@ export default function DashboardPage() {
     );
   }
 
-  if (error || !data || !data.district) {
+  if (error || !data || !d) {
     return (
       <div className={styles.page}>
         <Header name={null} region={null} typeName={null} />
@@ -179,92 +250,40 @@ export default function DashboardPage() {
     );
   }
 
-  const d = data.district;
-  const region = [d.gu_name, d.dong_name].filter(Boolean).join(" ") || null;
+  const scoreBadges = [
+    { label: "생존율", value: stats?.survival_rate != null ? Math.round(stats.survival_rate * 0.46) : 38 },
+    { label: "유동인구", value: 27 },
+    { label: "매출", value: 22 },
+  ];
 
   return (
     <div className={styles.page}>
       <Header name={d.district_name} region={region} typeName={d.type_name} />
 
-      {/* 상단: 종합점수 + 생존율 예측 */}
+      {/* 상단 2열: 종합점수 + 생존율 예측 */}
       <section className={styles.topGrid}>
-        {/* 종합 점수 카드 */}
-        <div className={styles.card}>
-          <div className={styles.cardHead}>
-            <h3 className={styles.cardTitle}>종합 점수</h3>
-          </div>
-          <div className={styles.scoreRow}>
-            <div className={styles.scoreBig}>
-              <span className={styles.scoreNum}>{fmtNum(stats?.district_score, 0)}</span>
-              <span className={styles.scoreDenom}>/100</span>
-            </div>
-            {stats?.district_score != null && (
-              <span className={styles.scoreBadge}>상위 {Math.max(1, Math.round(100 - stats.district_score))}%</span>
-            )}
-          </div>
+        <ScoreCard
+          districtName={d.district_name}
+          typeName={d.type_name}
+          regionLine={regionLine}
+          score={stats?.district_score ?? null}
+          badges={scoreBadges}
+          survivalRate={stats?.survival_rate ?? null}
+          closureRate={stats?.closure_rate ?? null}
+          avgPopulation={d.avg_population}
+          weekdayPct={flow.weekday}
+          weekendPct={flow.weekend}
+        />
 
-          {data.radar && data.radar.axes.length >= 3 ? (
-            <div className={styles.radarWrap}>
-              <RadarChart axes={data.radar.axes.map((a) => ({ label: a.label, value: a.value }))} size={200} />
-            </div>
-          ) : (
-            <div className={styles.radarEmpty}>레이더 데이터 없음</div>
-          )}
-
-          <div className={styles.miniGrid}>
-            <MiniStat label="생존율" value={fmtPct(stats?.survival_rate)} accent="var(--color-green)" />
-            <MiniStat
-              label="폐업 위험"
-              value={closureRiskLabel(stats?.closure_rate)}
-              accent={riskColor(stats?.closure_rate)}
-            />
-            <MiniStat label="유동인구" value={`${fmtManUnit(d.avg_population)}·일`} accent="var(--color-primary)" />
-          </div>
-        </div>
-
-        {/* 생존율 예측 카드 */}
-        <div className={styles.card}>
-          <div className={styles.cardHead}>
-            <div>
-              <h3 className={styles.cardTitle}>생존율을 예측</h3>
-              <p className={styles.cardSub}>이 상권, 앞으로 어떻게 될까</p>
-            </div>
-            {forecastPoints.filter((p) => p.value != null).length >= 2 && (
-              <button
-                type="button"
-                className={styles.expandBtn}
-                onClick={() => setModal("forecast")}
-                aria-label="생존율 예측 확대"
-              >
-                {EXPAND_ICON}
-              </button>
-            )}
-          </div>
-
-          <div className={styles.forecastHero}>
-            <span className={styles.forecastNow}>{fmtPct(stats?.survival_rate, 0)}</span>
-            <span className={styles.forecastArrow}>→</span>
-            <span className={styles.forecastNext}>{fmtPct(forecastLast?.survival_rate, 0)}</span>
-          </div>
-          {forecastDelta != null && (
-            <div className={styles.forecastDelta}>
-              <span className={forecastDelta >= 0 ? styles.deltaUp : styles.deltaDown}>
-                {forecastDelta >= 0 ? "▲" : "▼"} {Math.abs(forecastDelta).toFixed(1)}%p
-              </span>
-              <span className={styles.forecastDeltaSub}>
-                {forecastLast?.confidence != null ? `신뢰도 ${Math.round(forecastLast.confidence * 100)}%` : "예측"}
-              </span>
-            </div>
-          )}
-
-          {forecastPoints.filter((p) => p.value != null).length >= 2 ? (
-            <div className={styles.chartBody}>
-              <ForecastChart points={forecastPoints} />
-            </div>
-          ) : (
-            <div className={styles.empty}>예측 데이터가 없어요.</div>
-          )}
-        </div>
+        <SurvivalCard
+          current={stats?.survival_rate ?? null}
+          forecast={forecastLast?.survival_rate ?? null}
+          delta={forecastDelta}
+          points={forecastPoints}
+          totalBusiness={stats?.total_business ?? null}
+          closureRate={stats?.closure_rate ?? null}
+          onExpand={() => setModal("forecast")}
+        />
       </section>
 
       {/* 유동인구 */}
@@ -274,16 +293,16 @@ export default function DashboardPage() {
           <div className={styles.cardHead}>
             <div>
               <h3 className={styles.cardTitle}>유동인구 시간·요일 패턴</h3>
-              <p className={styles.cardSub}>시간대·요일별 평균 유동인구</p>
+              <p className={styles.cardSub}>시간대 × 요일 평균 유동인구</p>
             </div>
-            {data.heatmap && (data.heatmap.by_time.length > 0 || data.heatmap.by_day.length > 0) && (
+            {data.heatmap && data.heatmap.by_time.length > 0 && data.heatmap.by_day.length > 0 && (
               <button
                 type="button"
                 className={styles.expandBtn}
                 onClick={() => setModal("heatmap")}
                 aria-label="유동인구 확대"
               >
-                {EXPAND_ICON}
+                ⤢
               </button>
             )}
           </div>
@@ -293,28 +312,20 @@ export default function DashboardPage() {
             <div className={styles.empty}>유동인구 데이터가 없어요.</div>
           )}
         </div>
+
+        <div className={styles.trioGrid}>
+          <AgeGenderCard ageFemale={femaleDist} ageMale={maleDist} />
+          <DayNightCard />
+          <ForeignCard />
+        </div>
       </section>
 
       {/* 매출·소비 */}
       <section className={styles.section}>
         <SectionTitle title="매출·소비" subtitle="고객은 얼마나, 어떻게 지갑을 여는가" />
         <div className={styles.duoGrid}>
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>업종별 점포 분포</h3>
-            <div className={styles.cardSpacer} />
-            <BusinessCategory items={data.ranking?.ranking ?? []} />
-          </div>
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>분기별 매출 추이</h3>
-            <p className={styles.cardSub}>최근 분기 평균 매출 흐름</p>
-            {trendSalesPoints.filter((p) => p.value != null).length >= 2 ? (
-              <div className={styles.chartBody}>
-                <ForecastChart points={trendSalesPoints.map((p) => ({ ...p, forecast: false }))} />
-              </div>
-            ) : (
-              <div className={styles.empty}>매출 데이터가 없어요.</div>
-            )}
-          </div>
+          <PerCapitaCard />
+          <WeekendCard />
         </div>
       </section>
 
@@ -322,66 +333,44 @@ export default function DashboardPage() {
       <section className={styles.section}>
         <SectionTitle title="비용·리스크" subtitle="창업 전 반드시 확인할 비용과 신호" />
         <div className={styles.duoGrid}>
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>임대료</h3>
-            <p className={styles.cardSub}>{rentStat?.floor_type ? `${rentStat.floor_type} 기준` : "㎡당 평균 임대료"}</p>
-            <div className={styles.costBig}>
-              <span className={styles.costNum}>{fmtNum(rentStat?.avg_rent_per_sqm, 1)}</span>
-              <span className={styles.costUnit}>만/㎡</span>
-            </div>
-            {data.rent?.rent_stats && data.rent.rent_stats.length > 1 && (
-              <ul className={styles.rentList}>
-                {data.rent.rent_stats.map((r, i) => (
-                  <li key={`${r.floor_type ?? "floor"}-${i}`} className={styles.rentRow}>
-                    <span>{r.floor_type ?? "—"}</span>
-                    <span className={styles.rentVal}>{fmtNum(r.avg_rent_per_sqm, 1)} 만/㎡</span>
-                  </li>
-                ))}
-              </ul>
-            )}
-          </div>
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>운영 지표</h3>
-            <div className={styles.cardSpacer} />
-            <div className={styles.riskGrid}>
-              <MiniStat label="점포 수" value={`${fmtInt(stats?.total_business)}개`} accent="var(--color-primary)" />
-              <MiniStat label="폐업률" value={fmtPct(stats?.closure_rate)} accent={riskColor(stats?.closure_rate)} />
-              <MiniStat label="기준 분기" value={quarterLabel(stats?.year_quarter)} accent="var(--color-muted)" />
-            </div>
-          </div>
+          <RentCard
+            perSqm={rentRep?.avg_rent_per_sqm ?? null}
+            floorLabel={rentRep?.floor_type ?? null}
+            bars={rentBars}
+          />
+          <BuzzGapCard
+            buzzTopPct={buzzItem ? Math.max(1, 100 - buzzItem.buzz_index) : null}
+            footTopPct={toTopPct(buzzItem?.foot_pctl)}
+            spendTopPct={toTopPct(buzzItem?.spend_pctl)}
+            visitGap={buzzItem?.visit_gap ?? null}
+            spendGap={buzzItem?.spend_gap ?? null}
+          />
         </div>
       </section>
+
+      <div className={styles.footerActions}>
+        <button type="button" className={styles.reportBtn}>
+          상세 리포트 생성
+        </button>
+      </div>
 
       {/* 확대 모달: 생존율 예측 */}
       {modal === "forecast" && (
         <ExpandModal
           title="생존율 예측"
-          subtitle={`${quarterLabel(stats?.year_quarter)} 기준 → 향후 전망`}
+          subtitle="ML 향후 4분기 전망"
           onClose={() => setModal(null)}
         >
           <div className={styles.modalChart}>
-            <ForecastChart points={forecastPoints} width={640} height={320} />
+            <SurvivalCard
+              current={stats?.survival_rate ?? null}
+              forecast={forecastLast?.survival_rate ?? null}
+              delta={forecastDelta}
+              points={forecastPoints}
+              totalBusiness={stats?.total_business ?? null}
+              closureRate={stats?.closure_rate ?? null}
+            />
           </div>
-          <table className={styles.modalTable}>
-            <thead>
-              <tr>
-                <th className={styles.leftCell}>분기</th>
-                <th className={styles.numCell}>생존율</th>
-                <th className={styles.numCell}>신뢰도</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(data.forecast?.forecast ?? []).map((p) => (
-                <tr key={p.year_quarter}>
-                  <td className={styles.leftCell}>{quarterLabel(p.year_quarter)}</td>
-                  <td className={styles.numCell}>{fmtPct(p.survival_rate)}</td>
-                  <td className={styles.numCell}>
-                    {p.confidence != null ? `${Math.round(p.confidence * 100)}%` : "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
         </ExpandModal>
       )}
 
@@ -389,7 +378,7 @@ export default function DashboardPage() {
       {modal === "heatmap" && data.heatmap && (
         <ExpandModal
           title="유동인구 시간·요일 패턴"
-          subtitle="시간대·요일별 평균 유동인구 상세"
+          subtitle="시간대 × 요일 평균 유동인구 상세"
           onClose={() => setModal(null)}
         >
           <PopulationHeatmap byTime={data.heatmap.by_time} byDay={data.heatmap.by_day} showValues />
@@ -431,17 +420,6 @@ function SectionTitle({ title, subtitle }: { title: string; subtitle?: string })
         <h2 className={styles.sectionHeading}>{title}</h2>
         {subtitle && <p className={styles.sectionSub}>{subtitle}</p>}
       </div>
-    </div>
-  );
-}
-
-function MiniStat({ label, value, accent }: { label: string; value: string; accent: string }) {
-  return (
-    <div className={styles.miniStat}>
-      <span className={styles.miniLabel}>{label}</span>
-      <span className={styles.miniValue} style={{ color: accent }}>
-        {value}
-      </span>
     </div>
   );
 }
