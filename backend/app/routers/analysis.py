@@ -12,6 +12,8 @@ from app.schemas.analysis import (
     CommercialDistrictRentResponse,
     DistrictCategoryStatsResponse,
     DistrictTimeSeriesResponse,
+    PopulationHeatmapResponse,
+    RadarResponse,
 )
 from app.services.analysis_service import AnalysisService
 
@@ -311,3 +313,44 @@ def get_category_ranking(
         year_quarter=year_quarter,
         limit=limit,
     )
+
+
+@router.get(
+    "/commercial-districts/{district_id}/population-heatmap",
+    response_model=PopulationHeatmapResponse,
+    summary="상권 유동인구 히트맵(주변분포) 조회",
+    description=(
+        "특정 상권의 시간대별·요일별 평균 유동인구를 반환합니다.\n\n"
+        "- 저장 형태가 2D 매트릭스가 아니라 주변분포(marginal)이므로, "
+        "시간대(`by_time`)와 요일(`by_day`)을 각각 독립적인 슬롯 목록으로 반환합니다.\n"
+        "- `by_time`은 시간 오름차순, `by_day`는 월~일 고정 순서입니다.\n"
+        "- 데이터가 없으면 빈 리스트를 반환합니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_population_heatmap(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_population_heatmap(db, district_id=district_id)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/radar",
+    response_model=RadarResponse,
+    summary="상권 강점 프로필(레이더) 조회",
+    description=(
+        "특정 상권의 강점 프로필을 5축(생존율·유동인구·매출·안정성·성장성)으로 "
+        "0~100 정규화해 반환합니다.\n\n"
+        "- 기준 분기는 해당 상권의 business_category 최신 분기입니다.\n"
+        "- 각 축 산출식은 응답 스키마 및 서비스 주석을 참고하세요.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_radar(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_radar(db, district_id=district_id)
