@@ -5,6 +5,7 @@ import type {
   CategoryRankingResponse,
   RadarResponse,
   PopulationHeatmapResponse,
+  DistrictGeo,
 } from "../types";
 
 type QP = Record<string, string | number | undefined>;
@@ -32,4 +33,8 @@ export const commercialApi = {
   /** [신규] 유동인구 히트맵(시간/요일 주변분포) */
   heatmap: (id: number | string, params?: QP) =>
     apiClient.get<PopulationHeatmapResponse>(`/api/commercial-districts/${id}/population-heatmap`, { params }),
+
+  /** [신규] 전 상권 중심좌표(Leaflet 마커용). gu_name 으로 자치구 필터. */
+  geo: (params?: { gu_name?: string }) =>
+    apiClient.get<DistrictGeo[]>("/api/commercial-districts/geo", { params }),
 };

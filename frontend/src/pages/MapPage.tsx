@@ -1,27 +1,24 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiClient } from "../lib/apiClient";
 import { commercialApi } from "../services/commercialApi";
 import SangkwonPanel from "../components/map/SangkwonPanel";
-import SangkwonLayer from "../components/map/SangkwonLayer";
+import LeafletMap from "../components/map/LeafletMap";
 import {
-  MOCK_PIN_POSITIONS,
   toScore,
   type DistrictDetail,
   type DistrictSearchResult,
   type DistrictSummary,
-  type MapPin,
 } from "../components/map/mapData";
+import type { DistrictGeo } from "../types";
 import styles from "./MapPage.module.css";
 
 const DEFAULT_DISTRICT_ID = 1;
 
-/** 대표 상권 몇 개를 지도 핀으로 목업 배치할 때 쓰는 기본 후보 id. */
-const FALLBACK_PIN_IDS = [1, 2, 3, 4, 5, 6, 7, 8];
-
 export default function MapPage() {
   const navigate = useNavigate();
-  const openProfile = (id: number) => navigate(`/dashboard/${id}`);
+  const openProfile = useCallback((id: number) => navigate(`/dashboard/${id}`), [navigate]);
+
   const [selectedId, setSelectedId] = useState<number>(DEFAULT_DISTRICT_ID);
   const [summary, setSummary] = useState<DistrictSummary | null>(null);
   const [loading, setLoading] = useState(true);
@@ -29,6 +26,23 @@ export default function MapPage() {
 
   const [query, setQuery] = useState("");
   const [options, setOptions] = useState<DistrictSearchResult[]>([]);
+  const [geo, setGeo] = useState<DistrictGeo[]>([]);
+
+  // 전 상권 좌표(지도 마커) 1회 로드.
+  useEffect(() => {
+    let alive = true;
+    commercialApi
+      .geo()
+      .then((r) => {
+        if (alive) setGeo(r.data);
+      })
+      .catch(() => {
+        if (alive) setGeo([]);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   // 선택 상권 상세(좌측 패널) 로드.
   useEffect(() => {
@@ -113,43 +127,17 @@ export default function MapPage() {
     return [];
   }, [options, summary]);
 
-  // 지도 핀: 검색 결과(또는 정적 후보)에 목업 좌표를 매핑. 이름은 실데이터, 점수는 선택 상권만 실점수.
-  const pins = useMemo<MapPin[]>(() => {
-    const activeScore = toScore(
-      summary?.detail?.latest_stats?.district_score ??
-        (summary?.radar
-          ? summary.radar.axes.reduce((a, x) => a + x.value, 0) /
-            (summary.radar.axes.length || 1)
-          : null),
-    );
-
-    const source: Array<{ id: number; name: string; score: number | null }> =
-      options.length > 0
-        ? options.map((o) => ({
-            id: o.id,
-            name: o.district_name,
-            score: o.id === selectedId ? activeScore : mockScore(o.id),
-          }))
-        : FALLBACK_PIN_IDS.map((id) => ({
-            id,
-            name:
-              id === selectedId && summary?.detail
-                ? summary.detail.district_name
-                : `상권 ${id}`,
-            score: id === selectedId ? activeScore : mockScore(id),
-          }));
-
-    return source.slice(0, MOCK_PIN_POSITIONS.length).map((s, i) => ({
-      id: s.id,
-      name: s.name,
-      score: s.score,
-      x: MOCK_PIN_POSITIONS[i].x,
-      y: MOCK_PIN_POSITIONS[i].y,
-      active: s.id === selectedId,
-    }));
-  }, [options, summary, selectedId]);
-
-  const activePin = pins.find((p) => p.active) ?? null;
+  const activeScore = useMemo(
+    () =>
+      toScore(
+        summary?.detail?.latest_stats?.district_score ??
+          (summary?.radar
+            ? summary.radar.axes.reduce((a, x) => a + x.value, 0) /
+              (summary.radar.axes.length || 1)
+            : null),
+      ),
+    [summary],
+  );
 
   return (
     <div className={styles.page}>
@@ -177,20 +165,16 @@ export default function MapPage() {
           onSelect={setSelectedId}
           onOpenProfile={openProfile}
         />
-        <SangkwonLayer
-          pins={pins}
-          activeName={activePin?.name ?? summary?.detail?.district_name ?? null}
-          activeScore={activePin?.score ?? null}
-          onSearchArea={() => setQuery(query || "강남")}
-          onSelectPin={setSelectedId}
+        <LeafletMap
+          points={geo}
+          selectedId={selectedId}
+          activeName={summary?.detail?.district_name ?? null}
+          activeType={summary?.detail?.type_name ?? null}
+          activeScore={activeScore}
+          onSelect={setSelectedId}
           onOpenProfile={openProfile}
         />
       </div>
     </div>
   );
-}
-
-/** 좌표/점수 API가 없는 상권용 안정적 목업 점수(id 기반 결정적). */
-function mockScore(id: number): number {
-  return 60 + ((id * 7) % 30);
 }

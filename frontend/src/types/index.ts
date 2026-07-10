@@ -107,6 +107,16 @@ export interface PopulationHeatmapResponse {
   by_day: HeatmapSlot[];
 }
 
+// ── 상권 좌표 (GET /api/commercial-districts/geo) [Leaflet 지도용] ──
+export interface DistrictGeo {
+  id: number;
+  district_name: string;
+  type_name: string | null;
+  gu_name: string | null;
+  lat: number;
+  lng: number;
+}
+
 // ── 유저 (GET /api/users/me, /api/users/me/stats) [신규] ──
 export interface UserMe {
   id: number;
