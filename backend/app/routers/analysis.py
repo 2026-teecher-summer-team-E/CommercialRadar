@@ -13,6 +13,7 @@ from app.schemas.analysis import (
     DistrictCategoryStatsResponse,
     DistrictTimeSeriesResponse,
     ForeignRatioResponse,
+    PerCapitaSalesResponse,
     PopulationHeatmapResponse,
     PopulationRatiosResponse,
     RadarResponse,
@@ -397,3 +398,24 @@ def get_population_ratios(
 ):
     _get_existing_district_id(db, district_id)
     return AnalysisService.get_population_ratios(db, district_id=district_id)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/per-capita-sales",
+    response_model=PerCapitaSalesResponse,
+    summary="상권 인당매출 조회",
+    description=(
+        "특정 상권의 인당매출(방문 1인당 매출, 원)을 반환합니다.\n\n"
+        "- `per_capita_sales` = 최신 매출 분기 총매출 ÷ 같은 분기 유동인구\n"
+        "- 매출은 business_category, 유동인구는 population_timeseries(dimension='total') 기준\n"
+        "- 유동인구가 분기 total이므로 '분기당 방문 1인당 매출'입니다.\n"
+        "- 데이터가 없으면 각 값은 null입니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_per_capita_sales(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_per_capita_sales(db, district_id=district_id)
