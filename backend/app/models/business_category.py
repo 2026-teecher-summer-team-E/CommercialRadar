@@ -1,4 +1,5 @@
 from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
 from app.database import Base
@@ -28,6 +29,7 @@ class BusinessCategory(Base):
     total_business = Column(Integer)       # STOR_CO (점포)
     tx_count = Column(Integer)             # THSMON_SELNG_CO (추정매출)
     total_sales = Column(BigInteger)       # THSMON_SELNG_AMT (추정매출)
+    time_band_sales = Column(JSONB)        # 시간대별 매출 {"00_06": float, ... "21_24": float} (추정매출)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     is_deleted = Column(Boolean, nullable=False, default=False)
