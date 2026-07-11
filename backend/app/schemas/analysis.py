@@ -163,3 +163,21 @@ class PopulationRatiosResponse(BaseModel):
     nighttime_pct: float | None = Field(
         None, ge=0, le=100, description="밤 시간대(17~21+21~24+00~06) 유동인구 비중(%). 데이터 없으면 null", examples=[45.9]
     )
+
+
+class PerCapitaSalesResponse(BaseModel):
+    """상권 인당매출 = 최신 매출 분기 총매출 ÷ 같은 분기 유동인구(방문 1인당 매출, 원)."""
+
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    year_quarter: str | None = Field(
+        None, description="산출 기준 분기(매출 최신 분기). 데이터 없으면 null", examples=["2025-Q4"]
+    )
+    total_sales: float | None = Field(
+        None, ge=0, description="해당 분기 총매출(원)", examples=[418704504599.0]
+    )
+    population: float | None = Field(
+        None, ge=0, description="해당 분기 유동인구 합계(명)", examples=[7453204.0]
+    )
+    per_capita_sales: float | None = Field(
+        None, ge=0, description="인당매출 = 총매출 ÷ 유동인구(원/방문). 데이터 없으면 null", examples=[56177.0]
+    )

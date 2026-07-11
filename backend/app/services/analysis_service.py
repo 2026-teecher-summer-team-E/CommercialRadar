@@ -413,6 +413,72 @@ class AnalysisService:
         }
 
     @staticmethod
+    def get_per_capita_sales(db: Session, district_id: int) -> dict:
+        """인당매출 = 최신 매출 분기 총매출 ÷ 같은 분기 유동인구(방문 1인당 매출, 원).
+
+        매출(business_category)과 유동인구(population_timeseries)의 최신 분기가
+        다를 수 있어(매출은 2025-Q4까지, 유동인구는 그 이후 분기도 있음), 매출 최신
+        분기를 기준으로 같은 분기 유동인구를 매칭한다. 해당 분기 유동인구가 없으면
+        그 분기 이하의 가장 최신 유동인구로 폴백한다.
+        """
+        empty = {
+            "district_id": district_id,
+            "year_quarter": None,
+            "total_sales": None,
+            "population": None,
+            "per_capita_sales": None,
+        }
+        latest_q = (
+            db.query(func.max(BusinessCategory.year_quarter))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.total_sales.isnot(None),
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+        if latest_q is None:
+            return empty
+
+        total_sales = (
+            db.query(func.sum(BusinessCategory.total_sales))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == latest_q,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+
+        # 같은 분기 유동인구(total). 없으면 그 분기 이하 최신으로 폴백.
+        population = (
+            db.query(PopulationTimeseries.avg_population)
+            .filter(
+                PopulationTimeseries.commercial_district_id == district_id,
+                PopulationTimeseries.dimension == "total",
+                PopulationTimeseries.slot == "total",
+                PopulationTimeseries.year_quarter <= latest_q,
+                PopulationTimeseries.is_deleted.is_(False),
+            )
+            .order_by(PopulationTimeseries.year_quarter.desc())
+            .limit(1)
+            .scalar()
+        )
+
+        per_capita = (
+            round(float(total_sales) / float(population))
+            if total_sales and population
+            else None
+        )
+        return {
+            "district_id": district_id,
+            "year_quarter": latest_q,
+            "total_sales": float(total_sales) if total_sales is not None else None,
+            "population": float(population) if population is not None else None,
+            "per_capita_sales": per_capita,
+        }
+
+    @staticmethod
     def _apply_quarter_range(query, year_quarter_col, from_quarter, to_quarter):
         if from_quarter:
             query = query.filter(year_quarter_col >= from_quarter)
