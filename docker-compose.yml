@@ -12,6 +12,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    # backend와 동일하게 ./backend를 마운트해야 pull 후 추가된 마이그레이션 파일을
+    # 이미지 재빌드 없이 그대로 적용한다(마운트가 없으면 빌드 시점 리비전만 보여
+    # 새 마이그레이션에서 "Can't locate revision"으로 실패한다).
+    volumes:
+      - ./backend:/app
     command: alembic upgrade head
     restart: "no"
 
