@@ -55,6 +55,13 @@ class PopulationForecaster(GlobalForecaster):
 
         return RNNModel
 
-    def _predicted_value(self, value: float) -> dict:
-        # 유동인구 수는 음수 불가. TODO: breakdown(gender/age/nationality) 채우기.
-        return {"total": int(max(0.0, round(value)))}
+    def _predicted_value(self, low: float, mid: float, high: float) -> dict:
+        # 유동인구 수는 음수 불가 → 세 분위수 모두 정수화.
+        # TODO: breakdown(gender/age/nationality) 채우기.
+        def clip(v: float) -> int:
+            return int(max(0.0, round(v)))
+
+        return {
+            "total": clip(mid),  # 대표 포인트 = 중앙값(P50)
+            "scenarios": {"low": clip(low), "mid": clip(mid), "high": clip(high)},
+        }

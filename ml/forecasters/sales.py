@@ -51,6 +51,12 @@ class SalesForecaster(GlobalForecaster):
 
         return TFTModel
 
-    def _predicted_value(self, value: float) -> dict:
-        # 매출은 음수 불가 → 0 clip. TODO: tx_count 동시 예측
-        return {"total_sales": int(max(0.0, round(value)))}
+    def _predicted_value(self, low: float, mid: float, high: float) -> dict:
+        # 매출은 음수 불가 → 0 clip. 세 분위수 모두 정수화. TODO: tx_count 동시 예측
+        def clip(v: float) -> int:
+            return int(max(0.0, round(v)))
+
+        return {
+            "total_sales": clip(mid),  # 대표 포인트 = 중앙값(P50)
+            "scenarios": {"low": clip(low), "mid": clip(mid), "high": clip(high)},
+        }
