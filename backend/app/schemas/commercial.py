@@ -66,3 +66,19 @@ class DistrictGeoOut(BaseModel):
     gu_name: str | None = None
     lat: float
     lng: float
+
+
+class SalesTimeBandsResponse(BaseModel):
+    """상권 최신 분기 시간대별 매출 → 낮/밤 집계.
+
+    낮 = 06_11 + 11_14 + 14_17, 밤 = 17_21 + 21_24 + 00_06 (17시 기준).
+    재인제스천 전 DB 행엔 time_band_sales가 없어 값이 없으면 null로 반환한다.
+    """
+
+    district_id: int
+    year_quarter: str | None = None
+    daytime_sales: float | None = None
+    nighttime_sales: float | None = None
+    daytime_pct: float | None = None
+    nighttime_pct: float | None = None
+    bands: dict | None = None

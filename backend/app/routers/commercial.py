@@ -12,7 +12,12 @@ from app.schemas.commercial import (
     CommercialDistrictSearchOut,
     DistrictGeoOut,
     LatestStatsOut,
+    SalesTimeBandsResponse,
 )
+
+# 낮/밤 밴드 구분 (17시 기준)
+_DAY_BANDS = ("06_11", "11_14", "14_17")
+_NIGHT_BANDS = ("17_21", "21_24", "00_06")
 
 router = APIRouter(tags=["commercial"])
 
@@ -119,6 +124,71 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
         if r["geojson"]
     ]
     return {"type": "FeatureCollection", "features": features}
+
+
+@router.get(
+    "/commercial-districts/{district_id}/sales-time-bands",
+    response_model=SalesTimeBandsResponse,
+)
+def get_sales_time_bands(district_id: int, db: Session = Depends(get_db)):
+    """상권 최신 분기 업종별 time_band_sales를 밴드별 합산해 낮/밤 매출로 집계한다.
+
+    낮 = 06_11 + 11_14 + 14_17, 밤 = 17_21 + 21_24 + 00_06 (17시 기준).
+    재인제스천 전 DB 행엔 time_band_sales가 없어, 밴드 데이터가 없으면 값을 null로 반환한다.
+    """
+    latest_quarter = (
+        db.query(BusinessCategory.year_quarter)
+        .filter(
+            BusinessCategory.commercial_district_id == district_id,
+            BusinessCategory.is_deleted == False,  # noqa: E712
+        )
+        .order_by(BusinessCategory.year_quarter.desc())
+        .limit(1)
+        .scalar()
+    )
+    if latest_quarter is None:
+        return SalesTimeBandsResponse(district_id=district_id)
+
+    rows = (
+        db.query(BusinessCategory.time_band_sales)
+        .filter(
+            BusinessCategory.commercial_district_id == district_id,
+            BusinessCategory.year_quarter == latest_quarter,
+            BusinessCategory.is_deleted == False,  # noqa: E712
+            BusinessCategory.time_band_sales.isnot(None),
+        )
+        .all()
+    )
+
+    band_totals: dict[str, float] = {}
+    for (bands,) in rows:
+        if not isinstance(bands, dict):
+            continue
+        for key, val in bands.items():
+            if val is None:
+                continue
+            band_totals[key] = band_totals.get(key, 0.0) + float(val)
+
+    # 재인제스천 전이라 밴드 데이터가 전혀 없으면 값 없이 반환.
+    if not band_totals:
+        return SalesTimeBandsResponse(district_id=district_id, year_quarter=latest_quarter)
+
+    daytime_sales = sum(band_totals.get(b, 0.0) for b in _DAY_BANDS)
+    nighttime_sales = sum(band_totals.get(b, 0.0) for b in _NIGHT_BANDS)
+    total = daytime_sales + nighttime_sales
+
+    daytime_pct = round(daytime_sales / total * 100, 2) if total > 0 else None
+    nighttime_pct = round(nighttime_sales / total * 100, 2) if total > 0 else None
+
+    return SalesTimeBandsResponse(
+        district_id=district_id,
+        year_quarter=latest_quarter,
+        daytime_sales=daytime_sales,
+        nighttime_sales=nighttime_sales,
+        daytime_pct=daytime_pct,
+        nighttime_pct=nighttime_pct,
+        bands=band_totals,
+    )
 
 
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
