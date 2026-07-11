@@ -325,6 +325,65 @@ class AnalysisService:
             "axes": axes,
         }
 
+    DAYTIME_SLOTS = {"06~11", "11~14", "14~17"}
+    WEEKEND_DAYS = {"토", "일"}
+
+    @staticmethod
+    def get_population_ratios(db: Session, district_id: int) -> dict:
+        """주말 비중·낮밤 비중을 population_heatmap 슬롯 합산으로 산출한다.
+
+        - weekend_pct: (토+일 합) / (월~일 전체 합) * 100
+        - daytime_pct: (06~11 + 11~14 + 14~17 합) / (6개 time slot 전체 합) * 100
+        - nighttime_pct: 100 - daytime_pct
+        데이터가 없으면 각 값 null. 소수 1자리 반올림.
+        """
+        rows = (
+            db.query(
+                PopulationHeatmap.dimension,
+                PopulationHeatmap.slot,
+                PopulationHeatmap.avg_population,
+            )
+            .filter(
+                PopulationHeatmap.commercial_district_id == district_id,
+                PopulationHeatmap.is_deleted.is_(False),
+            )
+            .all()
+        )
+
+        day_total = 0.0
+        day_weekend = 0.0
+        day_has_data = False
+
+        time_total = 0.0
+        time_daytime = 0.0
+        time_has_data = False
+
+        for row in rows:
+            if row.avg_population is None:
+                continue
+            val = float(row.avg_population)
+            if row.dimension == "day":
+                day_total += val
+                day_has_data = True
+                if row.slot in AnalysisService.WEEKEND_DAYS:
+                    day_weekend += val
+            elif row.dimension == "time":
+                time_total += val
+                time_has_data = True
+                if row.slot in AnalysisService.DAYTIME_SLOTS:
+                    time_daytime += val
+
+        weekend_pct = round(day_weekend / day_total * 100.0, 1) if day_has_data and day_total else None
+        daytime_pct = round(time_daytime / time_total * 100.0, 1) if time_has_data and time_total else None
+        nighttime_pct = round(100.0 - daytime_pct, 1) if daytime_pct is not None else None
+
+        return {
+            "district_id": district_id,
+            "weekend_pct": weekend_pct,
+            "daytime_pct": daytime_pct,
+            "nighttime_pct": nighttime_pct,
+        }
+
     @staticmethod
     def get_foreign_ratio(db: Session, district_id: int) -> dict:
         """상권 생활인구 중 외국인 비중(%)을 산출한다.
