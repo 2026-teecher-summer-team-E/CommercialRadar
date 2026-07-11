@@ -4,6 +4,7 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.business_category import BusinessCategory
+from app.models.foreign_population import ForeignPopulation
 from app.models.population_heatmap import PopulationHeatmap
 from app.models.population_timeseries import PopulationTimeseries
 
@@ -322,6 +323,34 @@ class AnalysisService:
             "district_id": district_id,
             "year_quarter": target_quarter,
             "axes": axes,
+        }
+
+    @staticmethod
+    def get_foreign_ratio(db: Session, district_id: int) -> dict:
+        """상권 생활인구 중 외국인 비중(%)을 산출한다.
+
+        foreign_population은 (dimension, slot) 주변분포로 저장되어 있고 time/day는
+        같은 인구를 시간대/요일로 각각 쪼갠 것이라 총량이 동일하다. 이중집계를
+        피하려고 dimension='time' 슬롯 합계만으로 외국인수/전체수 비율을 낸다.
+        """
+        forn, tot = (
+            db.query(
+                func.sum(ForeignPopulation.foreigner_count),
+                func.sum(ForeignPopulation.total_count),
+            )
+            .filter(
+                ForeignPopulation.commercial_district_id == district_id,
+                ForeignPopulation.dimension == "time",
+                ForeignPopulation.is_deleted.is_(False),
+            )
+            .first()
+        )
+        pct = round(float(forn) / float(tot) * 100.0, 1) if forn is not None and tot else None
+        return {
+            "district_id": district_id,
+            "foreigner_pct": pct,
+            "foreigner_count": round(float(forn), 1) if forn is not None else None,
+            "total_count": round(float(tot), 1) if tot is not None else None,
         }
 
     @staticmethod
