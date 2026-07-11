@@ -12,6 +12,7 @@ from app.schemas.analysis import (
     CommercialDistrictRentResponse,
     DistrictCategoryStatsResponse,
     DistrictTimeSeriesResponse,
+    ForeignRatioResponse,
     PopulationHeatmapResponse,
     RadarResponse,
 )
@@ -354,3 +355,23 @@ def get_radar(
 ):
     _get_existing_district_id(db, district_id)
     return AnalysisService.get_radar(db, district_id=district_id)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/foreign-ratio",
+    response_model=ForeignRatioResponse,
+    summary="상권 외국인 생활인구 비중 조회",
+    description=(
+        "특정 상권의 생활인구 중 외국인 비중(%)을 반환합니다.\n\n"
+        "- `foreign_population`의 시간대(`dimension='time'`) 슬롯 합계로 "
+        "외국인수/전체수 비율을 산출합니다.\n"
+        "- 데이터가 없으면 각 값은 null입니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_foreign_ratio(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_foreign_ratio(db, district_id=district_id)

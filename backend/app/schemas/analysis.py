@@ -133,3 +133,18 @@ class RadarResponse(BaseModel):
     axes: list[RadarAxis] = Field(
         ..., description="상권 강점 프로필 5축(survival, population, sales, stability, growth 순서)"
     )
+
+
+class ForeignRatioResponse(BaseModel):
+    """상권 생활인구 중 외국인 비중. foreign_population(dimension='time') 슬롯 합계 기준."""
+
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    foreigner_pct: float | None = Field(
+        None, ge=0, le=100, description="외국인 비중(%). 데이터 없으면 null", examples=[4.2]
+    )
+    foreigner_count: float | None = Field(
+        None, ge=0, description="외국인 생활인구 합계(명)", examples=[12716.1]
+    )
+    total_count: float | None = Field(
+        None, ge=0, description="전체 생활인구 합계(명)", examples=[300569.3]
+    )
