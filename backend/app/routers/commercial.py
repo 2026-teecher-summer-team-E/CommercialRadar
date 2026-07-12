@@ -126,6 +126,23 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
     return {"type": "FeatureCollection", "features": features}
 
 
+def _latest_business_quarter(db: Session, district_id: int) -> str | None:
+    """상권의 business_category 최신 분기('YYYY-QN'). 데이터 없으면 None.
+
+    year_quarter는 'YYYY-QN'이라 문자열 내림차순 = 최신 분기.
+    """
+    return (
+        db.query(BusinessCategory.year_quarter)
+        .filter(
+            BusinessCategory.commercial_district_id == district_id,
+            BusinessCategory.is_deleted == False,  # noqa: E712
+        )
+        .order_by(BusinessCategory.year_quarter.desc())
+        .limit(1)
+        .scalar()
+    )
+
+
 @router.get(
     "/commercial-districts/{district_id}/sales-time-bands",
     response_model=SalesTimeBandsResponse,
@@ -136,16 +153,19 @@ def get_sales_time_bands(district_id: int, db: Session = Depends(get_db)):
     낮 = 06_11 + 11_14 + 14_17, 밤 = 17_21 + 21_24 + 00_06 (17시 기준).
     재인제스천 전 DB 행엔 time_band_sales가 없어, 밴드 데이터가 없으면 값을 null로 반환한다.
     """
-    latest_quarter = (
-        db.query(BusinessCategory.year_quarter)
+    # 존재하지 않는 district는 404 ("데이터 없는 유효 district"와 구분).
+    district_exists = (
+        db.query(CommercialDistrict.id)
         .filter(
-            BusinessCategory.commercial_district_id == district_id,
-            BusinessCategory.is_deleted == False,  # noqa: E712
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
         )
-        .order_by(BusinessCategory.year_quarter.desc())
-        .limit(1)
-        .scalar()
+        .first()
     )
+    if district_exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    latest_quarter = _latest_business_quarter(db, district_id)
     if latest_quarter is None:
         return SalesTimeBandsResponse(district_id=district_id)
 
@@ -205,17 +225,7 @@ def get_commercial_district(district_id: int, db: Session = Depends(get_db)):
     if district is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
 
-    latest_quarter = (
-        db.query(BusinessCategory.year_quarter)
-        .filter(
-            BusinessCategory.commercial_district_id == district_id,
-            BusinessCategory.is_deleted == False,  # noqa: E712
-        )
-        # year_quarter는 'YYYY-QN'이라 문자열 내림차순 = 최신 분기.
-        .order_by(BusinessCategory.year_quarter.desc())
-        .limit(1)
-        .scalar()
-    )
+    latest_quarter = _latest_business_quarter(db, district_id)
 
     latest_stats = None
     if latest_quarter is not None:
