@@ -81,4 +81,4 @@ class SalesTimeBandsResponse(BaseModel):
     nighttime_sales: float | None = None
     daytime_pct: float | None = None
     nighttime_pct: float | None = None
-    bands: dict | None = None
+    bands: dict[str, float] | None = None

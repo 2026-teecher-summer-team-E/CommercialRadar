@@ -325,8 +325,8 @@ class AnalysisService:
             "axes": axes,
         }
 
-    DAYTIME_SLOTS = {"06~11", "11~14", "14~17"}
-    WEEKEND_DAYS = {"토", "일"}
+    DAYTIME_SLOTS = frozenset({"06~11", "11~14", "14~17"})
+    WEEKEND_DAYS = frozenset({"토", "일"})
 
     @staticmethod
     def get_population_ratios(db: Session, district_id: int) -> dict:
