@@ -82,15 +82,21 @@ def get_sales_forecast(
         .all()
     )
 
-    forecast = [
-        SalesForecastPoint(
-            year_quarter=row.target_quarter,
-            total_sales=(row.predicted_value or {}).get("total_sales"),
-            tx_count=(row.predicted_value or {}).get("tx_count"),
-            confidence=row.confidence,
+    forecast = []
+    for row in rows:
+        pv = row.predicted_value or {}
+        ts = pv.get("total_sales")
+        sc = pv.get("scenarios") or {}
+        forecast.append(
+            SalesForecastPoint(
+                year_quarter=row.target_quarter,
+                total_sales=sc.get("mid", ts),
+                tx_count=pv.get("tx_count"),
+                low=sc.get("low", ts),
+                high=sc.get("high", ts),
+                confidence=row.confidence,
+            )
         )
-        for row in rows
-    ]
 
     model_version = rows[0].model_version if rows and rows[0].model_version else "TBD"
 
@@ -156,14 +162,20 @@ def get_survival_forecast(
         .all()
     )
 
-    forecast = [
-        SurvivalForecastPoint(
-            year_quarter=row.target_quarter,
-            survival_rate=(row.predicted_value or {}).get("survival_rate"),
-            confidence=row.confidence,
+    forecast = []
+    for row in rows:
+        pv = row.predicted_value or {}
+        sr = pv.get("survival_rate")
+        sc = pv.get("scenarios") or {}
+        forecast.append(
+            SurvivalForecastPoint(
+                year_quarter=row.target_quarter,
+                survival_rate=sc.get("mid", sr),
+                low=sc.get("low", sr),
+                high=sc.get("high", sr),
+                confidence=row.confidence,
+            )
         )
-        for row in rows
-    ]
 
     model_version = rows[0].model_version if rows and rows[0].model_version else "TBD"
 
@@ -254,10 +266,14 @@ def get_population_forecast(
             all_breakdown = value.get("breakdown") or {}
             # 요청 분류만 선택. 데이터에 없는 분류는 빈 dict로 반환.
             point_breakdown = {cat: all_breakdown.get(cat, {}) for cat in requested_breakdown}
+        sc = value.get("scenarios") or {}
+        total = value.get("total")
         forecast.append(
             PopulationForecastPoint(
                 year_quarter=row.target_quarter,
-                total=value.get("total"),
+                total=sc.get("mid", total),
+                low=sc.get("low", total),
+                high=sc.get("high", total),
                 confidence=row.confidence,
                 breakdown=point_breakdown,
             )

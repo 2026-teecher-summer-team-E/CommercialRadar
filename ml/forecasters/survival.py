@@ -51,7 +51,12 @@ class SurvivalForecaster(GlobalForecaster):
 
         return TFTModel
 
-    def _predicted_value(self, value: float) -> dict:
-        # survival_rate는 0~1 유계 → clip 후처리
-        v = max(0.0, min(1.0, value))
-        return {"survival_rate": round(v, 4)}
+    def _predicted_value(self, low: float, mid: float, high: float) -> dict:
+        # survival_rate는 0~1 유계 → 세 분위수 모두 clip 후처리
+        def clip(v: float) -> float:
+            return round(max(0.0, min(1.0, v)), 4)
+
+        return {
+            "survival_rate": clip(mid),  # 대표 포인트 = 중앙값(P50)
+            "scenarios": {"low": clip(low), "mid": clip(mid), "high": clip(high)},
+        }

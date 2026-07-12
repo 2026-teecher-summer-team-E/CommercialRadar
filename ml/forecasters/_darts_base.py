@@ -31,7 +31,7 @@ class GlobalForecaster(Forecaster):
       _load_frame(engine) -> DataFrame ('period' 컬럼 포함)
       _build_model()      -> darts 토치 모델 (확률적 likelihood 권장)
       _model_class()      -> darts 모델 클래스 (load용)
-      _predicted_value(v) -> dict (ml_predictions.predicted_value)
+      _predicted_value(low, mid, high) -> dict (ml_predictions.predicted_value)
     """
 
     group_cols: list[str] = ["commercial_district_id"]
@@ -52,7 +52,11 @@ class GlobalForecaster(Forecaster):
     def _model_class(self):
         raise NotImplementedError
 
-    def _predicted_value(self, value: float) -> dict:
+    def _predicted_value(self, low: float, mid: float, high: float) -> dict:
+        """P10/P50/P90 세 분위수 → predicted_value dict.
+
+        중앙값(mid=P50)을 대표 포인트로, 세 값 모두 scenarios로 담는다.
+        """
         raise NotImplementedError
 
     def _num_samples(self) -> int:
@@ -98,12 +102,14 @@ class GlobalForecaster(Forecaster):
             values = fc.all_values()  # shape (n_time, n_comp, n_samples)
             for i, ts_point in enumerate(fc.time_index):
                 samples = np.asarray(values[i, 0, :], dtype=float)
-                value = float(np.mean(samples))
+                # 확률적 예측 표본 → 3가지 미래(비관 P10 / 기본 P50 / 낙관 P90).
+                # 결정론 모델(num_samples=1)이면 세 값이 같아 밴드가 한 점으로 붕괴한다.
+                low, mid, high = (float(q) for q in np.percentile(samples, [10, 50, 90]))
                 rows.append(PredictionRow(
                     commercial_district_id=district_id,
                     prediction_type=self.prediction_type,
                     target_quarter=loaders.timestamp_to_year_quarter(ts_point),
-                    predicted_value=self._predicted_value(value),
+                    predicted_value=self._predicted_value(low, mid, high),
                     confidence=self._confidence_from_samples(samples),
                     model_version=self.model_version,
                 ))
