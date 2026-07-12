@@ -58,19 +58,29 @@ def list_commercial_districts(
 @router.get("/commercial-districts/geo", response_model=list[DistrictGeoOut])
 def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db)):
     """모든 상권의 중심좌표(geometry centroid). Leaflet 지도 마커용. gu_name 으로 자치구 필터 가능."""
-    where = "geometry IS NOT NULL AND is_deleted = false"
+    where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
     params: dict[str, str] = {}
     if gu_name:
-        where += " AND gu_name = :gu"
+        where += " AND cd.gu_name = :gu"
         params["gu"] = gu_name
     rows = (
         db.execute(
             text(
                 f"""
-                SELECT id, district_name, type_name, gu_name,
-                       ST_Y(ST_Centroid(geometry)) AS lat,
-                       ST_X(ST_Centroid(geometry)) AS lng
-                FROM commercial_district
+                SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
+                       ST_Y(ST_Centroid(cd.geometry)) AS lat,
+                       ST_X(ST_Centroid(cd.geometry)) AS lng,
+                       pop.avg_population AS population
+                FROM commercial_district cd
+                LEFT JOIN LATERAL (
+                    SELECT pt.avg_population
+                    FROM population_timeseries pt
+                    WHERE pt.commercial_district_id = cd.id
+                      AND pt.dimension = 'total' AND pt.slot = 'total'
+                      AND pt.is_deleted = false
+                    ORDER BY pt.year_quarter DESC
+                    LIMIT 1
+                ) pop ON true
                 WHERE {where}
                 """
             ),
@@ -89,18 +99,28 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
     ST_SimplifyPreserveTopology 로 단순화(≈30m)하고 좌표 정밀도 6자리로 낮춰 용량을 줄인다.
     gu_name 으로 자치구 필터 가능.
     """
-    where = "geometry IS NOT NULL AND is_deleted = false"
+    where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
     params: dict[str, str] = {}
     if gu_name:
-        where += " AND gu_name = :gu"
+        where += " AND cd.gu_name = :gu"
         params["gu"] = gu_name
     rows = (
         db.execute(
             text(
                 f"""
-                SELECT id, district_name, type_name, gu_name,
-                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(geometry, 0.0003), 6) AS geojson
-                FROM commercial_district
+                SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
+                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0003), 6) AS geojson,
+                       pop.avg_population AS population
+                FROM commercial_district cd
+                LEFT JOIN LATERAL (
+                    SELECT pt.avg_population
+                    FROM population_timeseries pt
+                    WHERE pt.commercial_district_id = cd.id
+                      AND pt.dimension = 'total' AND pt.slot = 'total'
+                      AND pt.is_deleted = false
+                    ORDER BY pt.year_quarter DESC
+                    LIMIT 1
+                ) pop ON true
                 WHERE {where}
                 """
             ),
@@ -118,6 +138,7 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
                 "district_name": r["district_name"],
                 "type_name": r["type_name"],
                 "gu_name": r["gu_name"],
+                "population": r["population"],
             },
         }
         for r in rows
