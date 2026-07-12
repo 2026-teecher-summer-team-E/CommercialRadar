@@ -1,0 +1,91 @@
+# 프로덕션 관측성 스택 — Jaeger·Loki·Grafana·Tempo (+ OTel Collector, Promtail).
+#
+# 데이터 흐름:
+#   backend --(OTLP)--> otel-collector --팬아웃--> Tempo, Jaeger   (트레이스)
+#   컨테이너 stdout --> promtail --> Loki                          (로그)
+#   Grafana = Loki·Tempo·Jaeger를 데이터소스로 묶어 시각화
+#
+# 참고: Jaeger와 Tempo는 둘 다 트레이스 백엔드라 기능이 겹친다(요청에 따라 둘 다 올림).
+#
+# prod와 함께 기동:
+#   docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml up -d --build
+#
+# UI 접근(외부 비공개, 127.0.0.1 바인딩 → SSH 터널):
+#   ssh -L 3000:localhost:3000 -L 16686:localhost:16686 ubuntu@<EC2>
+#   Grafana http://localhost:3000  /  Jaeger http://localhost:16686
+
+services:
+  # backend에 OTLP export 대상만 주입(서비스 정의는 prod.yml에서 병합).
+  backend:
+    environment:
+      - OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318
+      - OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
+      - OTEL_SERVICE_NAME=commercialradar-backend
+    depends_on:
+      otel-collector:
+        condition: service_started
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ./monitoring/otel-collector-config.yaml:/etc/otelcol/config.yaml:ro
+    depends_on:
+      - tempo
+      - jaeger
+    restart: unless-stopped
+
+  tempo:
+    image: grafana/tempo:2.6.0
+    command: ["-config.file=/etc/tempo.yaml"]
+    volumes:
+      - ./monitoring/tempo.yaml:/etc/tempo.yaml:ro
+      - tempo_data:/var/tempo
+    restart: unless-stopped
+
+  jaeger:
+    image: jaegertracing/all-in-one:1.62.0
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true   # OTLP 수신(4317/4318) 활성
+    ports:
+      - "127.0.0.1:16686:16686"       # Jaeger UI (SSH 터널로만)
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.2.0
+    command: ["-config.file=/etc/loki/local-config.yaml"]  # 이미지 내장 기본 설정
+    volumes:
+      - loki_data:/loki
+    restart: unless-stopped
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    command: ["-config.file=/etc/promtail/config.yaml"]
+    volumes:
+      - ./monitoring/promtail-config.yaml:/etc/promtail/config.yaml:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:11.2.0
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
+      - GF_AUTH_ANONYMOUS_ENABLED=false
+    ports:
+      - "127.0.0.1:3000:3000"         # Grafana UI (SSH 터널로만)
+    volumes:
+      - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - loki
+      - tempo
+      - jaeger
+    restart: unless-stopped
+
+volumes:
+  tempo_data:
+  loki_data:
+  grafana_data:

@@ -12,3 +12,10 @@ pydantic-settings==2.5.2
 pytest==8.3.3
 svix==1.96.1
 reportlab==4.2.5
+
+# --- 관측성(OpenTelemetry 트레이싱) ---
+# OTEL_EXPORTER_OTLP_ENDPOINT 설정 시에만 활성(telemetry.py). 버전은 서로 호환 쌍으로 고정.
+opentelemetry-sdk==1.27.0
+opentelemetry-exporter-otlp-proto-http==1.27.0
+opentelemetry-instrumentation-fastapi==0.48b0
+opentelemetry-instrumentation-sqlalchemy==0.48b0
