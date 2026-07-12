@@ -12,7 +12,12 @@ from app.schemas.commercial import (
     CommercialDistrictSearchOut,
     DistrictGeoOut,
     LatestStatsOut,
+    SalesTimeBandsResponse,
 )
+
+# 낮/밤 밴드 구분 (17시 기준)
+_DAY_BANDS = ("06_11", "11_14", "14_17")
+_NIGHT_BANDS = ("17_21", "21_24", "00_06")
 
 router = APIRouter(tags=["commercial"])
 
@@ -121,6 +126,91 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
     return {"type": "FeatureCollection", "features": features}
 
 
+def _latest_business_quarter(db: Session, district_id: int) -> str | None:
+    """상권의 business_category 최신 분기('YYYY-QN'). 데이터 없으면 None.
+
+    year_quarter는 'YYYY-QN'이라 문자열 내림차순 = 최신 분기.
+    """
+    return (
+        db.query(BusinessCategory.year_quarter)
+        .filter(
+            BusinessCategory.commercial_district_id == district_id,
+            BusinessCategory.is_deleted == False,  # noqa: E712
+        )
+        .order_by(BusinessCategory.year_quarter.desc())
+        .limit(1)
+        .scalar()
+    )
+
+
+@router.get(
+    "/commercial-districts/{district_id}/sales-time-bands",
+    response_model=SalesTimeBandsResponse,
+)
+def get_sales_time_bands(district_id: int, db: Session = Depends(get_db)):
+    """상권 최신 분기 업종별 time_band_sales를 밴드별 합산해 낮/밤 매출로 집계한다.
+
+    낮 = 06_11 + 11_14 + 14_17, 밤 = 17_21 + 21_24 + 00_06 (17시 기준).
+    재인제스천 전 DB 행엔 time_band_sales가 없어, 밴드 데이터가 없으면 값을 null로 반환한다.
+    """
+    # 존재하지 않는 district는 404 ("데이터 없는 유효 district"와 구분).
+    district_exists = (
+        db.query(CommercialDistrict.id)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if district_exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    latest_quarter = _latest_business_quarter(db, district_id)
+    if latest_quarter is None:
+        return SalesTimeBandsResponse(district_id=district_id)
+
+    rows = (
+        db.query(BusinessCategory.time_band_sales)
+        .filter(
+            BusinessCategory.commercial_district_id == district_id,
+            BusinessCategory.year_quarter == latest_quarter,
+            BusinessCategory.is_deleted == False,  # noqa: E712
+            BusinessCategory.time_band_sales.isnot(None),
+        )
+        .all()
+    )
+
+    band_totals: dict[str, float] = {}
+    for (bands,) in rows:
+        if not isinstance(bands, dict):
+            continue
+        for key, val in bands.items():
+            if val is None:
+                continue
+            band_totals[key] = band_totals.get(key, 0.0) + float(val)
+
+    # 재인제스천 전이라 밴드 데이터가 전혀 없으면 값 없이 반환.
+    if not band_totals:
+        return SalesTimeBandsResponse(district_id=district_id, year_quarter=latest_quarter)
+
+    daytime_sales = sum(band_totals.get(b, 0.0) for b in _DAY_BANDS)
+    nighttime_sales = sum(band_totals.get(b, 0.0) for b in _NIGHT_BANDS)
+    total = daytime_sales + nighttime_sales
+
+    daytime_pct = round(daytime_sales / total * 100, 2) if total > 0 else None
+    nighttime_pct = round(nighttime_sales / total * 100, 2) if total > 0 else None
+
+    return SalesTimeBandsResponse(
+        district_id=district_id,
+        year_quarter=latest_quarter,
+        daytime_sales=daytime_sales,
+        nighttime_sales=nighttime_sales,
+        daytime_pct=daytime_pct,
+        nighttime_pct=nighttime_pct,
+        bands=band_totals,
+    )
+
+
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
 def get_commercial_district(district_id: int, db: Session = Depends(get_db)):
     """상권 기본 정보 + business_category 최신 분기 전체 업종 집계."""
@@ -135,17 +225,7 @@ def get_commercial_district(district_id: int, db: Session = Depends(get_db)):
     if district is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
 
-    latest_quarter = (
-        db.query(BusinessCategory.year_quarter)
-        .filter(
-            BusinessCategory.commercial_district_id == district_id,
-            BusinessCategory.is_deleted == False,  # noqa: E712
-        )
-        # year_quarter는 'YYYY-QN'이라 문자열 내림차순 = 최신 분기.
-        .order_by(BusinessCategory.year_quarter.desc())
-        .limit(1)
-        .scalar()
-    )
+    latest_quarter = _latest_business_quarter(db, district_id)
 
     latest_stats = None
     if latest_quarter is not None:

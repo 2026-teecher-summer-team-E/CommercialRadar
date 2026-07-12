@@ -4,6 +4,7 @@ from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.business_category import BusinessCategory
+from app.models.foreign_population import ForeignPopulation
 from app.models.population_heatmap import PopulationHeatmap
 from app.models.population_timeseries import PopulationTimeseries
 
@@ -322,6 +323,159 @@ class AnalysisService:
             "district_id": district_id,
             "year_quarter": target_quarter,
             "axes": axes,
+        }
+
+    DAYTIME_SLOTS = frozenset({"06~11", "11~14", "14~17"})
+    WEEKEND_DAYS = frozenset({"토", "일"})
+
+    @staticmethod
+    def get_population_ratios(db: Session, district_id: int) -> dict:
+        """주말 비중·낮밤 비중을 population_heatmap 슬롯 합산으로 산출한다.
+
+        - weekend_pct: (토+일 합) / (월~일 전체 합) * 100
+        - daytime_pct: (06~11 + 11~14 + 14~17 합) / (6개 time slot 전체 합) * 100
+        - nighttime_pct: 100 - daytime_pct
+        데이터가 없으면 각 값 null. 소수 1자리 반올림.
+        """
+        rows = (
+            db.query(
+                PopulationHeatmap.dimension,
+                PopulationHeatmap.slot,
+                PopulationHeatmap.avg_population,
+            )
+            .filter(
+                PopulationHeatmap.commercial_district_id == district_id,
+                PopulationHeatmap.is_deleted.is_(False),
+            )
+            .all()
+        )
+
+        day_total = 0.0
+        day_weekend = 0.0
+        day_has_data = False
+
+        time_total = 0.0
+        time_daytime = 0.0
+        time_has_data = False
+
+        for row in rows:
+            if row.avg_population is None:
+                continue
+            val = float(row.avg_population)
+            if row.dimension == "day":
+                day_total += val
+                day_has_data = True
+                if row.slot in AnalysisService.WEEKEND_DAYS:
+                    day_weekend += val
+            elif row.dimension == "time":
+                time_total += val
+                time_has_data = True
+                if row.slot in AnalysisService.DAYTIME_SLOTS:
+                    time_daytime += val
+
+        weekend_pct = round(day_weekend / day_total * 100.0, 1) if day_has_data and day_total else None
+        daytime_pct = round(time_daytime / time_total * 100.0, 1) if time_has_data and time_total else None
+        nighttime_pct = round(100.0 - daytime_pct, 1) if daytime_pct is not None else None
+
+        return {
+            "district_id": district_id,
+            "weekend_pct": weekend_pct,
+            "daytime_pct": daytime_pct,
+            "nighttime_pct": nighttime_pct,
+        }
+
+    @staticmethod
+    def get_foreign_ratio(db: Session, district_id: int) -> dict:
+        """상권 생활인구 중 외국인 비중(%)을 산출한다.
+
+        foreign_population은 (dimension, slot) 주변분포로 저장되어 있고 time/day는
+        같은 인구를 시간대/요일로 각각 쪼갠 것이라 총량이 동일하다. 이중집계를
+        피하려고 dimension='time' 슬롯 합계만으로 외국인수/전체수 비율을 낸다.
+        """
+        forn, tot = (
+            db.query(
+                func.sum(ForeignPopulation.foreigner_count),
+                func.sum(ForeignPopulation.total_count),
+            )
+            .filter(
+                ForeignPopulation.commercial_district_id == district_id,
+                ForeignPopulation.dimension == "time",
+                ForeignPopulation.is_deleted.is_(False),
+            )
+            .first()
+        )
+        pct = round(float(forn) / float(tot) * 100.0, 1) if forn is not None and tot else None
+        return {
+            "district_id": district_id,
+            "foreigner_pct": pct,
+            "foreigner_count": round(float(forn), 1) if forn is not None else None,
+            "total_count": round(float(tot), 1) if tot is not None else None,
+        }
+
+    @staticmethod
+    def get_per_capita_sales(db: Session, district_id: int) -> dict:
+        """인당매출 = 최신 매출 분기 총매출 ÷ 같은 분기 유동인구(방문 1인당 매출, 원).
+
+        매출(business_category)과 유동인구(population_timeseries)의 최신 분기가
+        다를 수 있어(매출은 2025-Q4까지, 유동인구는 그 이후 분기도 있음), 매출 최신
+        분기를 기준으로 같은 분기 유동인구를 매칭한다. 해당 분기 유동인구가 없으면
+        그 분기 이하의 가장 최신 유동인구로 폴백한다.
+        """
+        empty = {
+            "district_id": district_id,
+            "year_quarter": None,
+            "total_sales": None,
+            "population": None,
+            "per_capita_sales": None,
+        }
+        latest_q = (
+            db.query(func.max(BusinessCategory.year_quarter))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.total_sales.isnot(None),
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+        if latest_q is None:
+            return empty
+
+        total_sales = (
+            db.query(func.sum(BusinessCategory.total_sales))
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == latest_q,
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .scalar()
+        )
+
+        # 같은 분기 유동인구(total). 없으면 그 분기 이하 최신으로 폴백.
+        population = (
+            db.query(PopulationTimeseries.avg_population)
+            .filter(
+                PopulationTimeseries.commercial_district_id == district_id,
+                PopulationTimeseries.dimension == "total",
+                PopulationTimeseries.slot == "total",
+                PopulationTimeseries.year_quarter <= latest_q,
+                PopulationTimeseries.is_deleted.is_(False),
+            )
+            .order_by(PopulationTimeseries.year_quarter.desc())
+            .limit(1)
+            .scalar()
+        )
+
+        per_capita = (
+            round(float(total_sales) / float(population))
+            if total_sales and population
+            else None
+        )
+        return {
+            "district_id": district_id,
+            "year_quarter": latest_q,
+            "total_sales": float(total_sales) if total_sales is not None else None,
+            "population": float(population) if population is not None else None,
+            "per_capita_sales": per_capita,
         }
 
     @staticmethod
