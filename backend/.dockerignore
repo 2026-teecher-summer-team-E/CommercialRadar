@@ -1,0 +1,12 @@
+# 시크릿·로컬 아티팩트가 이미지에 딸려 들어가지 않도록 제외
+.env
+.env.*
+.venv
+venv
+__pycache__/
+*.pyc
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.git
+.omc/

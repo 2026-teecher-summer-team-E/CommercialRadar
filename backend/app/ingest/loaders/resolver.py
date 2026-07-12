@@ -11,12 +11,67 @@
 import logging
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models.commercial_district import CommercialDistrict
+from app.models.population_timeseries import PopulationTimeseries
 
 logger = logging.getLogger(__name__)
+
+# 화제성(buzz) 대상 상권 유형 — 검색 가능한 지명을 가진 유형만.
+# 골목상권은 상권명이 시설명/출구번호(예: '곰달래도서관', '충정로역 7번')라 검색어로 부적절.
+BUZZ_TARGET_TYPES = ("발달상권", "관광특구")
+
+
+def load_buzz_targets(db: Session, limit: int) -> list[dict]:
+    """화제성 수집 대상 상권을 유동인구 상위 limit개로 로드한다.
+
+    최신 분기(population_timeseries dimension='total') 기준 유동인구 내림차순으로,
+    검색 가능한 유형(BUZZ_TARGET_TYPES)만 선정한다. 키워드 생성은 호출부(client)가 담당하므로
+    여기서는 {district_id, district_name, type_name}만 반환한다.
+
+    seoul_commercial + seoul_population 선행 완료 필요.
+    """
+    latest_quarter = db.execute(
+        select(func.max(PopulationTimeseries.year_quarter)).where(
+            PopulationTimeseries.dimension == "total",
+            PopulationTimeseries.is_deleted.is_(False),
+        )
+    ).scalar()
+    if latest_quarter is None:
+        logger.warning("buzz 대상 선정 실패: population_timeseries 데이터 없음")
+        return []
+
+    rows = db.execute(
+        select(
+            CommercialDistrict.id,
+            CommercialDistrict.district_name,
+            CommercialDistrict.type_name,
+        )
+        .join(
+            PopulationTimeseries,
+            PopulationTimeseries.commercial_district_id == CommercialDistrict.id,
+        )
+        .where(
+            CommercialDistrict.type_name.in_(BUZZ_TARGET_TYPES),
+            PopulationTimeseries.dimension == "total",
+            PopulationTimeseries.year_quarter == latest_quarter,
+            PopulationTimeseries.is_deleted.is_(False),
+        )
+        .order_by(PopulationTimeseries.avg_population.desc())
+        .limit(limit)
+    ).all()
+
+    targets = [
+        {"district_id": id_, "district_name": name, "type_name": type_name}
+        for id_, name, type_name in rows
+    ]
+    logger.info(
+        "buzz 대상 상권 로드: %d개 (분기=%s, 유형=%s)",
+        len(targets), latest_quarter, "/".join(BUZZ_TARGET_TYPES),
+    )
+    return targets
 
 
 def load_trdar_map(db: Session) -> dict[str, int]:

@@ -18,7 +18,9 @@ class DataIngestionRequest(BaseModel):
 
 
 def _require_admin_key(x_admin_key: str) -> None:
-    if not secrets.compare_digest(x_admin_key, settings.ADMIN_KEY):
+    # ADMIN_KEY 미설정(빈 값)이면 무조건 거부(fail-closed). 빈 헤더와 빈 키가
+    # compare_digest에서 일치해 admin 엔드포인트가 열리는 것을 막는다.
+    if not settings.ADMIN_KEY or not secrets.compare_digest(x_admin_key, settings.ADMIN_KEY):
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Invalid admin key")
 
 
