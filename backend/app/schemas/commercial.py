@@ -66,6 +66,7 @@ class DistrictGeoOut(BaseModel):
     gu_name: str | None = None
     lat: float
     lng: float
+    population: float | None = None
 
 
 class SalesTimeBandsResponse(BaseModel):
