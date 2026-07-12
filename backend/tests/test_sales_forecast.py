@@ -59,9 +59,12 @@ def test_returns_forecast_with_confidence(client, db):
     assert body["district_id"] == district.id
     assert body["model"] == "tft-v1"
     assert body["category_name"] is None
+    # 시나리오 미적재 → low/high는 대표값(total_sales)으로 폴백
     assert body["forecast"] == [
-        {"year_quarter": "2025-Q1", "total_sales": 1_650_000_000, "tx_count": 13_200, "confidence": 0.80},
-        {"year_quarter": "2025-Q2", "total_sales": 1_720_000_000, "tx_count": 13_800, "confidence": 0.74},
+        {"year_quarter": "2025-Q1", "total_sales": 1_650_000_000, "tx_count": 13_200,
+         "low": 1_650_000_000, "high": 1_650_000_000, "confidence": 0.80},
+        {"year_quarter": "2025-Q2", "total_sales": 1_720_000_000, "tx_count": 13_800,
+         "low": 1_720_000_000, "high": 1_720_000_000, "confidence": 0.74},
     ]
 
 
@@ -81,7 +84,8 @@ def test_category_filter_returns_only_that_category(client, db):
     body = resp.json()
     assert body["category_name"] == "카페"
     assert body["forecast"] == [
-        {"year_quarter": "2025-Q1", "total_sales": 1_650_000_000, "tx_count": 13_200, "confidence": 0.80},
+        {"year_quarter": "2025-Q1", "total_sales": 1_650_000_000, "tx_count": 13_200,
+         "low": 1_650_000_000, "high": 1_650_000_000, "confidence": 0.80},
     ]
 
 
@@ -95,7 +99,8 @@ def test_no_category_uses_aggregate_row(client, db):
     assert resp.status_code == 200
     body = resp.json()
     assert body["forecast"] == [
-        {"year_quarter": "2025-Q1", "total_sales": 5_000_000_000, "tx_count": 40_000, "confidence": 0.80},
+        {"year_quarter": "2025-Q1", "total_sales": 5_000_000_000, "tx_count": 40_000,
+         "low": 5_000_000_000, "high": 5_000_000_000, "confidence": 0.80},
     ]
 
 
