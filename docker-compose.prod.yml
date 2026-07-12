@@ -1,0 +1,82 @@
+# 프로덕션 배포용 compose (EC2 단일 인스턴스 + docker).
+#   개발용 docker-compose.yml과 다른 점:
+#     - backend: --reload 제거, --workers 2, 소스 마운트 없음(이미지 코드 사용), restart 정책
+#     - backend 호스트 포트 미노출 → Caddy(리버스 프록시)만 외부 공개(HTTPS)
+#     - redis 제외(코드 미사용)
+#
+# 사용:
+#   docker compose -f docker-compose.prod.yml up -d --build
+#   (migrate 서비스가 alembic upgrade head를 자동 실행)
+#
+# 필요한 .env 값(개발용에 추가): ENV=prod, CORS_ORIGINS, ADMIN_KEY, CLERK_*, SITE_ADDRESS
+
+services:
+  # 스키마 마이그레이션 전용 1회성 서비스.
+  migrate:
+    build: ./backend
+    env_file:
+      - ./.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-commercialradar}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: alembic upgrade head
+    restart: "no"
+
+  backend:
+    build: ./backend
+    env_file:
+      - ./.env
+    environment:
+      - DATABASE_URL=postgresql+psycopg2://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-commercialradar}
+    # 프로덕션: reload 없이 워커 2개. 소스 마운트 없음(이미지에 구운 코드 사용).
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+    # 호스트 포트 미노출 — 외부 접근은 Caddy를 통해서만.
+
+  postgres:
+    image: postgis/postgis:16-3.4
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-commercialradar}
+    # localhost에만 바인딩 → SSH 터널로 관리자만 접근(pg_dump 등). 외부 비공개.
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-commercialradar}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  # 리버스 프록시 + 자동 HTTPS(Let's Encrypt).
+  # SITE_ADDRESS에 도메인을 넣으면 자동으로 인증서를 발급한다(80/443 개방 + DNS 필요).
+  # 도메인이 없으면 SITE_ADDRESS=:80 으로 두고 HTTP로만 노출(임시).
+  caddy:
+    image: caddy:2
+    depends_on:
+      - backend
+    environment:
+      - SITE_ADDRESS=${SITE_ADDRESS:-:80}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+  caddy_data:
+  caddy_config:
