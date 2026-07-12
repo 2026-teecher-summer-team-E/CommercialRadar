@@ -90,6 +90,26 @@ def _derive_peak(raw: dict) -> tuple[time | None, time | None]:
     return _PEAK_TIMES[best_field]
 
 
+def _derive_time_band_sales(raw: dict) -> dict[str, float] | None:
+    """TMZON_*_SELNG_AMT 6개 필드를 밴드 키 dict로 변환.
+
+    반환 형태: {"00_06": float, "06_11": ..., "21_24": ...}
+    값이 없으면 0.0. 모든 밴드가 결측이면 None을 반환한다.
+    """
+    bands: dict[str, float] = {}
+    any_present = False
+    for field in _PEAK_TIMES:
+        # "TMZON_00_06_SELNG_AMT" → "00_06"
+        band_key = field[len("TMZON_"):-len("_SELNG_AMT")]
+        val = raw.get(field)
+        if val is None:
+            bands[band_key] = 0.0
+        else:
+            any_present = True
+            bands[band_key] = float(val)
+    return bands if any_present else None
+
+
 # ──────────────────────────────────────────────────────────
 # 인덱스 빌더 (검증 + 인덱싱)
 # ──────────────────────────────────────────────────────────
@@ -199,6 +219,9 @@ def merge_and_transform(
         # 피크 시간대 (추정매출에서만 계산)
         peak_start, peak_end = _derive_peak(selng_raw) if selng_raw else (None, None)
 
+        # 시간대별 매출 (추정매출에서만 계산)
+        time_band_sales = _derive_time_band_sales(selng_raw) if selng_raw else None
+
         # 매출·거래건수 (추정매출)
         total_sales: int | None = None
         tx_count: int | None = None
@@ -231,6 +254,7 @@ def merge_and_transform(
             "peak_start": peak_start,
             "peak_end": peak_end,
             "total_sales": total_sales,
+            "time_band_sales": time_band_sales,
             "tx_count": tx_count,
             "total_business": total_business,
             "open_rate": open_rate,

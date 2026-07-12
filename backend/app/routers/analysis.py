@@ -12,7 +12,10 @@ from app.schemas.analysis import (
     CommercialDistrictRentResponse,
     DistrictCategoryStatsResponse,
     DistrictTimeSeriesResponse,
+    ForeignRatioResponse,
+    PerCapitaSalesResponse,
     PopulationHeatmapResponse,
+    PopulationRatiosResponse,
     RadarResponse,
 )
 from app.services.analysis_service import AnalysisService
@@ -354,3 +357,65 @@ def get_radar(
 ):
     _get_existing_district_id(db, district_id)
     return AnalysisService.get_radar(db, district_id=district_id)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/foreign-ratio",
+    response_model=ForeignRatioResponse,
+    summary="상권 외국인 생활인구 비중 조회",
+    description=(
+        "특정 상권의 생활인구 중 외국인 비중(%)을 반환합니다.\n\n"
+        "- `foreign_population`의 시간대(`dimension='time'`) 슬롯 합계로 "
+        "외국인수/전체수 비율을 산출합니다.\n"
+        "- 데이터가 없으면 각 값은 null입니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_foreign_ratio(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_foreign_ratio(db, district_id=district_id)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/population-ratios",
+    response_model=PopulationRatiosResponse,
+    summary="상권 유동인구 주말·낮밤 비중 조회",
+    description=(
+        "특정 상권의 유동인구 주말 비중과 낮밤 비중(%)을 반환합니다.\n\n"
+        "- `weekend_pct`: 토·일 유동인구 합 / 주간 전체 합 × 100\n"
+        "- `daytime_pct`: 06~11·11~14·14~17 합 / 시간대 전체 합 × 100\n"
+        "- `nighttime_pct`: 100 - daytime_pct\n"
+        "- 데이터가 없으면 각 값은 null입니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_population_ratios(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_population_ratios(db, district_id=district_id)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/per-capita-sales",
+    response_model=PerCapitaSalesResponse,
+    summary="상권 인당매출 조회",
+    description=(
+        "특정 상권의 인당매출(방문 1인당 매출, 원)을 반환합니다.\n\n"
+        "- `per_capita_sales` = 최신 매출 분기 총매출 ÷ 같은 분기 유동인구\n"
+        "- 매출은 business_category, 유동인구는 population_timeseries(dimension='total') 기준\n"
+        "- 유동인구가 분기 total이므로 '분기당 방문 1인당 매출'입니다.\n"
+        "- 데이터가 없으면 각 값은 null입니다.\n"
+        "- 존재하지 않는 `district_id`는 404를 반환합니다."
+    ),
+)
+def get_per_capita_sales(
+    district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    db: Session = Depends(get_db),
+):
+    _get_existing_district_id(db, district_id)
+    return AnalysisService.get_per_capita_sales(db, district_id=district_id)

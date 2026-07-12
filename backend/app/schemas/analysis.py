@@ -133,3 +133,51 @@ class RadarResponse(BaseModel):
     axes: list[RadarAxis] = Field(
         ..., description="상권 강점 프로필 5축(survival, population, sales, stability, growth 순서)"
     )
+
+
+class ForeignRatioResponse(BaseModel):
+    """상권 생활인구 중 외국인 비중. foreign_population(dimension='time') 슬롯 합계 기준."""
+
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    foreigner_pct: float | None = Field(
+        None, ge=0, le=100, description="외국인 비중(%). 데이터 없으면 null", examples=[4.2]
+    )
+    foreigner_count: float | None = Field(
+        None, ge=0, description="외국인 생활인구 합계(명)", examples=[12716.1]
+    )
+    total_count: float | None = Field(
+        None, ge=0, description="전체 생활인구 합계(명)", examples=[300569.3]
+    )
+
+
+class PopulationRatiosResponse(BaseModel):
+    """상권 유동인구의 주말 비중·낮밤 비중. population_heatmap(time/day 주변분포) 기준."""
+
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    weekend_pct: float | None = Field(
+        None, ge=0, le=100, description="주말(토+일) 유동인구 비중(%). 데이터 없으면 null", examples=[28.3]
+    )
+    daytime_pct: float | None = Field(
+        None, ge=0, le=100, description="낮 시간대(06~11+11~14+14~17) 유동인구 비중(%). 데이터 없으면 null", examples=[54.1]
+    )
+    nighttime_pct: float | None = Field(
+        None, ge=0, le=100, description="밤 시간대(17~21+21~24+00~06) 유동인구 비중(%). 데이터 없으면 null", examples=[45.9]
+    )
+
+
+class PerCapitaSalesResponse(BaseModel):
+    """상권 인당매출 = 최신 매출 분기 총매출 ÷ 같은 분기 유동인구(방문 1인당 매출, 원)."""
+
+    district_id: int = Field(..., description="조회한 상권의 commercial_district PK", examples=[42])
+    year_quarter: str | None = Field(
+        None, description="산출 기준 분기(매출 최신 분기). 데이터 없으면 null", examples=["2025-Q4"]
+    )
+    total_sales: float | None = Field(
+        None, ge=0, description="해당 분기 총매출(원)", examples=[418704504599.0]
+    )
+    population: float | None = Field(
+        None, ge=0, description="해당 분기 유동인구 합계(명)", examples=[7453204.0]
+    )
+    per_capita_sales: float | None = Field(
+        None, ge=0, description="인당매출 = 총매출 ÷ 유동인구(원/방문). 데이터 없으면 null", examples=[56177.0]
+    )
