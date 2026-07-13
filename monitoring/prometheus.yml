@@ -15,10 +15,10 @@ scrape_configs:
     static_configs:
       - targets: ["postgres-exporter:9187"]
 
-  # 컨테이너 CPU·메모리
-  - job_name: cadvisor
+  # 호스트 CPU·메모리·디스크
+  - job_name: node
     static_configs:
-      - targets: ["cadvisor:8080"]
+      - targets: ["node-exporter:9100"]
 
   # Prometheus 자기 자신
   - job_name: prometheus
