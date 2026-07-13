@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Time, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -14,6 +14,9 @@ class BusinessCategory(Base):
             "commercial_district_id", "category_name", "year_quarter",
             name="uq_biz_cat_cd_name_yq",
         ),
+        # 상권별 최신 분기 조회(district_score 등 집계)용. uq_biz_cat_cd_name_yq는
+        # category_name이 중간에 껴 있어 이 조회 패턴에 못 쓰인다.
+        Index("ix_business_category_district_yq", "commercial_district_id", "year_quarter"),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
