@@ -67,6 +67,7 @@ class DistrictGeoOut(BaseModel):
     lat: float
     lng: float
     population: float | None = None
+    district_score: float | None = None
 
 
 class SalesTimeBandsResponse(BaseModel):
