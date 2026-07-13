@@ -31,3 +31,15 @@ def create_recent_district(
     current_user: User = Depends(get_current_user),
 ):
     return RecentDistrictService.add(redis_client, current_user.id, body.model_dump())
+
+
+@router.delete(
+    "/recent-districts/{district_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_recent_district(
+    district_id: int,
+    redis_client: Redis = Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
+    RecentDistrictService.remove(redis_client, current_user.id, district_id)
