@@ -1,9 +1,10 @@
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Path, Query, status
+from fastapi import APIRouter, Depends, HTTPException, Path, Query, Request, Response, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
+from app.core.caching import apply_http_cache
 from app.core.deps import get_db
 from app.models.commercial_district import CommercialDistrict
 from app.models.rent_stats import RentStat
@@ -292,6 +293,8 @@ def get_district_category_stats(
     ),
 )
 def get_category_ranking(
+    request: Request,
+    response: Response,
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
     year_quarter: str | None = Query(
         None,
@@ -310,12 +313,16 @@ def get_category_ranking(
     _get_existing_district_id(db, district_id)
     year_quarter = _validate_quarter(year_quarter, "year_quarter")
 
-    return AnalysisService.get_category_ranking(
+    result = AnalysisService.get_category_ranking(
         db,
         district_id=district_id,
         year_quarter=year_quarter,
         limit=limit,
     )
+    cached = apply_http_cache(request, response, result, max_age=300)
+    if cached is not None:
+        return cached
+    return result
 
 
 @router.get(
