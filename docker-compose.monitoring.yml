@@ -69,7 +69,7 @@ services:
       - loki
     restart: unless-stopped
 
-  # 메트릭 수집기 — backend(/metrics)·postgres-exporter·cadvisor를 스크레이프.
+  # 메트릭 수집기 — backend(/metrics)·postgres-exporter·node-exporter를 스크레이프.
   prometheus:
     image: prom/prometheus:v2.54.1
     command:
@@ -80,7 +80,7 @@ services:
       - prometheus_data:/prometheus
     depends_on:
       - postgres-exporter
-      - cadvisor
+      - node-exporter
     restart: unless-stopped
 
   # Postgres 메트릭 — TPS(xact commit/rollback)·데드락·커넥션 수.
@@ -92,16 +92,16 @@ services:
       - postgres
     restart: unless-stopped
 
-  # 컨테이너 CPU·메모리 메트릭.
-  cadvisor:
-    image: gcr.io/cadvisor/cadvisor:v0.49.1
-    privileged: true
+  # 호스트 CPU·메모리·디스크 메트릭.
+  #   (cadvisor는 Docker containerd 스냅샷터 환경에서 컨테이너 메타데이터를 못 읽어
+  #    node-exporter로 대체 — 이 EC2는 사실상 이 앱만 도므로 호스트≈백엔드.)
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    command:
+      - "--path.rootfs=/host"
+    pid: host
     volumes:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /sys:/sys:ro
-      - /var/lib/docker/:/var/lib/docker:ro
-      - /dev/disk/:/dev/disk:ro
+      - /:/host:ro,rslave
     restart: unless-stopped
 
   grafana:
