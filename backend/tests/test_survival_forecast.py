@@ -60,9 +60,10 @@ def test_returns_forecast_with_confidence_and_model(client, db):
     assert body["district_id"] == district.id
     assert body["model"] == "tft-v1"
     assert body["category_name"] is None
+    # 시나리오 미적재 → low/high는 대표값(survival_rate)으로 폴백
     assert body["forecast"] == [
-        {"year_quarter": "2025-Q1", "survival_rate": 0.71, "confidence": 0.85},
-        {"year_quarter": "2025-Q2", "survival_rate": 0.68, "confidence": 0.78},
+        {"year_quarter": "2025-Q1", "survival_rate": 0.71, "low": 0.71, "high": 0.71, "confidence": 0.85},
+        {"year_quarter": "2025-Q2", "survival_rate": 0.68, "low": 0.68, "high": 0.68, "confidence": 0.78},
     ]
 
 
@@ -81,7 +82,7 @@ def test_category_filter_returns_only_that_category(client, db):
     body = resp.json()
     assert body["category_name"] == "카페"
     assert body["forecast"] == [
-        {"year_quarter": "2025-Q1", "survival_rate": 0.62, "confidence": 0.80},
+        {"year_quarter": "2025-Q1", "survival_rate": 0.62, "low": 0.62, "high": 0.62, "confidence": 0.80},
     ]
 
 
@@ -94,7 +95,7 @@ def test_no_category_uses_aggregate_row(client, db):
 
     assert resp.status_code == 200
     assert resp.json()["forecast"] == [
-        {"year_quarter": "2025-Q1", "survival_rate": 0.70, "confidence": 0.80},
+        {"year_quarter": "2025-Q1", "survival_rate": 0.70, "low": 0.70, "high": 0.70, "confidence": 0.80},
     ]
 
 

@@ -1,6 +1,58 @@
 # seed/ — 테스트 DB 시드
 
-외부 공개 API를 다시 긁지 않고도, 적재된 테스트 데이터를 팀원 DB에 **한 줄로** 복원한다.
+외부 공개 API를 다시 긁지 않고도, 적재된 테스트 데이터를 팀원 DB에 복원한다.
+
+시드 형식은 2가지다:
+- **`.sql.gz`** — `buzz_stats`(화제성)까지 포함한 최신 덤프. `gunzip | psql`로 직접 복원. **현재 배포 서버가 이 방식으로 적재됨.** (아래 "리뉴얼 복원 명령")
+- **`.zip`** — `scripts/seed-db.sh` 자동 복원용(기존). buzz_stats 미포함.
+
+---
+
+## 리뉴얼 복원 명령 (`.sql.gz`, buzz 포함)
+
+`gunzip -c ... | psql` 로 직접 복원한다. 로컬/서버 차이는 **`-f docker-compose.prod.yml`** 하나뿐.
+
+> ⚠️ `gunzip`은 **현재 폴더**에서 파일을 찾는다. 파일이 `seed/`에 있으면 `seed/commercialradar_seed.sql.gz` 로 경로를 붙인다.
+> ⚠️ 이미 데이터가 있으면 복원 시 `duplicate key` 에러가 난다 → **반드시 1) TRUNCATE 먼저** 실행.
+
+### 로컬 (기본 `docker-compose.yml`)
+
+```bash
+# 1) 기존 공개 테이블 비우기 (데이터 있을 때)
+docker compose exec -T postgres psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -c "TRUNCATE commercial_district, business_category, population_heatmap, population_timeseries, foreign_population, rent_stats, ml_predictions, buzz_stats RESTART IDENTITY CASCADE;"
+
+# 2) 복원
+gunzip -c commercialradar_seed.sql.gz | docker compose exec -T postgres psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -q
+
+# 3) 확인
+docker compose exec -T postgres psql -U postgres -d commercialradar -c "SELECT 'districts', count(*) FROM commercial_district UNION ALL SELECT 'predictions', count(*) FROM ml_predictions UNION ALL SELECT 'buzz', count(*) FROM buzz_stats;"
+```
+
+### 서버 (프로덕션, `docker-compose.prod.yml`)
+
+로컬과 동일하되 모든 명령에 `-f docker-compose.prod.yml`만 붙인다.
+
+```bash
+# 1) 비우기
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -c "TRUNCATE commercial_district, business_category, population_heatmap, population_timeseries, foreign_population, rent_stats, ml_predictions, buzz_stats RESTART IDENTITY CASCADE;"
+
+# 2) 복원
+gunzip -c commercialradar_seed.sql.gz | docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d commercialradar -v ON_ERROR_STOP=1 -q
+
+# 3) 확인 → districts 1650 / predictions 19524 / buzz 60
+docker compose -f docker-compose.prod.yml exec -T postgres psql -U postgres -d commercialradar -c "SELECT 'districts', count(*) FROM commercial_district UNION ALL SELECT 'predictions', count(*) FROM ml_predictions UNION ALL SELECT 'buzz', count(*) FROM buzz_stats;"
+```
+
+### `.sql.gz` 덤프 생성 (적재한 사람)
+
+```bash
+docker compose exec -T postgres pg_dump -U postgres -d commercialradar --data-only --no-owner \
+  -t commercial_district -t business_category -t population_heatmap \
+  -t population_timeseries -t foreign_population -t rent_stats \
+  -t ml_predictions -t buzz_stats | gzip > seed/commercialradar_seed.sql.gz
+```
+
+---
 
 ## 팀원 (데이터 받는 쪽)
 

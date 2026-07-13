@@ -4,9 +4,11 @@ from typing import Generator, Optional
 import jwt
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+from redis import Redis
 from sqlalchemy.orm import Session
 
 from app.core.config import settings
+from app.core.redis_client import get_redis_client
 from app.database import SessionLocal
 from app.models.users import User
 
@@ -36,6 +38,11 @@ def get_db() -> Generator:
         yield db
     finally:
         db.close()
+
+
+def get_redis() -> Redis:
+    """Redis 클라이언트 의존성. 커넥션 풀 재사용이라 get_db와 달리 요청별 정리가 필요 없다."""
+    return get_redis_client()
 
 def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(security),

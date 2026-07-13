@@ -24,9 +24,18 @@ class Settings(BaseSettings):
     NAVER_CLIENT_SECRET: str = ""
     ADMIN_KEY: str = ""
 
+    # CORS 허용 origin(콤마 구분). 프로덕션은 프론트 도메인을 명시한다.
+    # 기본값은 로컬 개발용(Vite 5173 등) — 와일드카드('*')는 자격증명과 함께 못 쓰므로 쓰지 않는다.
+    CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
+
     # 로컬 실행 시 루트 .env를 읽는다. 도커 환경에선 compose의 env_file이
     # 환경변수로 주입하므로 파일이 없어도 정상 동작한다.
     model_config = {"env_file": str(ENV_PATH), "extra": "ignore"}
+
+    @property
+    def cors_origins_list(self) -> list[str]:
+        """CORS_ORIGINS(콤마 구분 문자열)을 origin 리스트로 파싱한다."""
+        return [o.strip() for o in self.CORS_ORIGINS.split(",") if o.strip()]
 
 
 settings = Settings()

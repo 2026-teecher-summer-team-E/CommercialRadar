@@ -25,12 +25,19 @@ from sqlalchemy.sql import func
 from app.database import SessionLocal
 from app.ingest.clients.seoul_client import SeoulClient
 from app.ingest.clients.reb_client import RebClient, STATBL_FLOOR_TYPE
-from app.ingest.clients.naver_datalab_client import fetch_buzz
-from app.ingest.transformers.buzz_transformer import transform_datalab_response
+from app.ingest.clients.naver_datalab_client import (
+    ANCHOR,
+    BUZZ_TARGET_LIMIT,
+    build_keywords,
+    fetch_buzz_batched,
+)
+from app.ingest.transformers.buzz_transformer import transform_batched_responses
 from app.ingest.loaders.buzz_loader import upsert_all as upsert_buzz
 from app.ingest.loaders import commercial_loader, population_loader, business_loader
 from app.ingest.loaders import foreign_loader, rent_loader, population_timeseries_loader
-from app.ingest.loaders.resolver import load_trdar_map, load_adstrd_map, load_district_name_map
+from app.ingest.loaders.resolver import (
+    load_trdar_map, load_adstrd_map, load_district_name_map, load_buzz_targets,
+)
 from app.ingest.transformers import (
     commercial_transformer,
     population_transformer,
@@ -541,6 +548,12 @@ def ingest_seoul_rent(db: Session | None = None) -> IngestionRun:
 
 def ingest_buzz(db: Session | None = None) -> IngestionRun:
     """네이버 데이터랩 검색어 트렌드 → buzz_stats 적재 (5개 상권 1회 호출)."""
+    """네이버 데이터랩 검색어 트렌드 → buzz_stats 적재.
+
+    유동인구 상위 BUZZ_TARGET_LIMIT개 상권(발달상권·관광특구)을 앵커(강남역) 포함
+    배치로 나눠 수집하고, 앵커 대비로 재정규화해 배치 간 비교 가능한 buzz_index를 적재한다.
+    seoul_commercial + seoul_population 선행 완료 필요.
+    """
     owns_session = db is None
     db = db or SessionLocal()
     source = "buzz"
@@ -548,12 +561,24 @@ def ingest_buzz(db: Session | None = None) -> IngestionRun:
 
     try:
         run = _start_run(db, source)
-        response = fetch_buzz()
-        rows = transform_datalab_response(response)
+
+        # 대상 상권(유동인구 상위) 로드 후 상권명 → 검색 키워드 생성
+        raw_targets = load_buzz_targets(db, limit=BUZZ_TARGET_LIMIT)
+        targets = [
+            {
+                "district_id": t["district_id"],
+                "keywords": build_keywords(t["district_name"], t["type_name"]),
+            }
+            for t in raw_targets
+        ]
+        targets = [t for t in targets if t["keywords"]]  # 키워드 없으면 스킵
+
+        responses = fetch_buzz_batched(targets, months=6)
+        rows = transform_batched_responses(responses, ANCHOR["district_id"])
         upserted = upsert_buzz(db, rows)
 
         # transform이 빈 그룹을 스킵하므로 진단용 fetched_count는 raw results 기준으로 기록한다.
-        fetched = len(response.get("results", []))
+        fetched = sum(len(r.get("results", [])) for r in responses)
 
         run.status = "success"
         run.fetched_count = fetched
