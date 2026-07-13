@@ -3,6 +3,11 @@
 #     - 도메인(예: api.example.com) → 자동 HTTPS(Let's Encrypt)
 #     - :80 → HTTP만(도메인 없을 때 임시)
 {$SITE_ADDRESS} {
+	# /metrics 는 외부 노출 차단(404). Prometheus는 내부 네트워크(backend:8000)로
+	# 직접 스크레이프하므로 이 차단의 영향을 받지 않는다.
+	@metrics path /metrics
+	respond @metrics 404
+
 	reverse_proxy backend:8000
 
 	# 헬스체크·로그 (선택)
