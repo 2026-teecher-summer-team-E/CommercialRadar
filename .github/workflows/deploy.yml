@@ -1,0 +1,116 @@
+name: CI/CD
+
+# CI(test·build)는 PR·push 모두에서 검증한다.
+# CD(deploy)는 main push(또는 수동)에서만, CI 통과 후에만 실행된다.
+# public 레포 안전: deploy는 pull_request에서 안 돌고(if 가드), fork PR엔 시크릿도 노출 안 됨.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── CI: 테스트 (실제 Postgres+PostGIS에서 마이그레이션 후 pytest) ──
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgis/postgis:16-3.4   # postgis 확장 자동 활성(마이그레이션이 별도로 안 함)
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: commercialradar_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d commercialradar_test"
+          --health-interval 5s --health-timeout 3s --health-retries 15
+    env:
+      DATABASE_URL: postgresql+psycopg2://postgres:postgres@localhost:5432/commercialradar_test
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - name: 의존성 설치
+        working-directory: backend
+        run: pip install -r requirements.txt
+      - name: 마이그레이션 (alembic upgrade head)
+        working-directory: backend
+        run: alembic upgrade head
+      - name: 테스트 (pytest)
+        working-directory: backend
+        run: pytest -q
+
+  # ── CI: 빌드 검증 (이미지 빌드 + compose 설정 파싱) ──
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 백엔드 이미지 빌드
+        run: docker build -t commercialradar-backend:ci ./backend
+      - name: compose 설정 검증
+        run: |
+          cp .env.example .env   # env_file 존재·변수 치환용(값은 플레이스홀더)
+          docker compose -f docker-compose.prod.yml config >/dev/null
+          docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml config >/dev/null
+
+  # ── CD: 배포 (main push·수동, CI 통과 후) ──
+  deploy:
+    needs: [test, build]
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: EC2에 SSH 배포
+        env:
+          SSH_HOST: ${{ secrets.EC2_HOST }}
+          SSH_USER: ${{ secrets.EC2_USER }}
+          SSH_KEY: ${{ secrets.EC2_SSH_KEY }}
+          DEPLOY_DIR: ${{ secrets.DEPLOY_DIR }}
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.ssh
+          printf '%s\n' "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$SSH_USER@$SSH_HOST" \
+            "DEPLOY_DIR='${DEPLOY_DIR:-/home/ubuntu/CommercialRadar}' COMPOSE_PROJECT_NAME=commercialradar bash -s" <<'REMOTE'
+          set -euo pipefail
+          COMPOSE="docker compose -f docker-compose.prod.yml -f docker-compose.monitoring.yml"
+
+          cd "$DEPLOY_DIR"
+
+          echo "▶ 코드 동기화"
+          git fetch --prune origin
+          git reset --hard origin/main
+
+          echo "▶ DB 백업(best-effort)"
+          ./scripts/backup-db.sh || echo "  백업 스킵/실패 — 배포 계속"
+
+          echo "▶ 빌드 & 재기동"
+          $COMPOSE up -d --build
+
+          echo "▶ 헬스체크"
+          ok=0
+          for i in $(seq 1 30); do
+            if $COMPOSE exec -T backend python -c "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health',timeout=3).status==200 else 1)"; then
+              ok=1; break
+            fi
+            echo "  대기 중... ($i/30)"; sleep 3
+          done
+          if [ "$ok" != 1 ]; then
+            echo "❌ 헬스체크 실패 — 최근 로그:"
+            $COMPOSE logs --tail=80 backend
+            exit 1
+          fi
+          echo "✅ 배포 완료"
+
+          docker image prune -f
+          REMOTE

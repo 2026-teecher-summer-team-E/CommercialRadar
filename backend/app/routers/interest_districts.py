@@ -2,7 +2,11 @@ from fastapi import APIRouter, Depends, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
-from app.schemas.interest_district import InterestDistrictCreate, InterestDistrictResponse
+from app.schemas.interest_district import (
+    InterestDistrictCreate,
+    InterestDistrictResponse,
+    InterestDistrictUpdate,
+)
 from app.services.interest_district_service import InterestDistrictService
 
 router = APIRouter(tags=["interest-districts"])
@@ -30,6 +34,21 @@ def create_interest_district(
     current_user=Depends(get_current_user),
 ):
     return InterestDistrictService.create(db, current_user.id, body)
+
+
+@router.patch(
+    "/interest-districts/{interest_district_id}",
+    response_model=InterestDistrictResponse,
+)
+def update_interest_district(
+    interest_district_id: int,
+    body: InterestDistrictUpdate,
+    db: Session = Depends(get_db),
+    current_user=Depends(get_current_user),
+):
+    return InterestDistrictService.update(
+        db, current_user.id, interest_district_id, body
+    )
 
 
 @router.delete(

@@ -69,10 +69,12 @@ def test_returns_forecast_with_total_and_confidence_no_breakdown(client, db):
     body = resp.json()
     assert body["district_id"] == district.id
     assert body["model"] == "tft-v1"
-    # breakdown 미요청 → null
+    # breakdown 미요청 → null. 시나리오 미적재 → low/high는 대표값(total)으로 폴백
     assert body["forecast"] == [
-        {"year_quarter": "2025-Q1", "total": 91000, "confidence": 0.83, "breakdown": None},
-        {"year_quarter": "2025-Q2", "total": 95000, "confidence": 0.78, "breakdown": None},
+        {"year_quarter": "2025-Q1", "total": 91000, "low": 91000, "high": 91000,
+         "confidence": 0.83, "breakdown": None},
+        {"year_quarter": "2025-Q2", "total": 95000, "low": 95000, "high": 95000,
+         "confidence": 0.78, "breakdown": None},
     ]
 
 
