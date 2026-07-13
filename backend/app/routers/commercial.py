@@ -103,6 +103,7 @@ def list_district_geo(
                       )
                 ) score ON true
                 WHERE {where}
+                ORDER BY cd.id
                 """
             ),
             params,
@@ -167,6 +168,7 @@ def list_district_geojson(
                       )
                 ) score ON true
                 WHERE {where}
+                ORDER BY cd.id
                 """
             ),
             params,
