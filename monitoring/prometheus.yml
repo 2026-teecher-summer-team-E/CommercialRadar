@@ -1,0 +1,26 @@
+# Prometheus 스크레이프 설정 — 백엔드·postgres·컨테이너 메트릭 수집.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # FastAPI 백엔드 — RPS·지연·상태코드 (prometheus-fastapi-instrumentator /metrics)
+  - job_name: backend
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["backend:8000"]
+
+  # Postgres — TPS·데드락·커넥션
+  - job_name: postgres
+    static_configs:
+      - targets: ["postgres-exporter:9187"]
+
+  # 컨테이너 CPU·메모리
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+
+  # Prometheus 자기 자신
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
