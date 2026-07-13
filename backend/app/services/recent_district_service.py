@@ -33,3 +33,10 @@ class RecentDistrictService:
         items = [item] + [i for i in existing if i["id"] != item["id"]]
         RecentDistrictService._replace_all(redis_client, key, items[:MAX_ITEMS])
         return item
+
+    @staticmethod
+    def remove(redis_client: Redis, user_id: int, district_id: int) -> None:
+        key = RecentDistrictService._key(user_id)
+        existing = [json.loads(raw) for raw in redis_client.lrange(key, 0, -1)]
+        items = [i for i in existing if i["id"] != district_id]
+        RecentDistrictService._replace_all(redis_client, key, items)
