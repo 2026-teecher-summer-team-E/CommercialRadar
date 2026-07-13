@@ -70,7 +70,8 @@ def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db))
                 SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
                        ST_Y(ST_Centroid(cd.geometry)) AS lat,
                        ST_X(ST_Centroid(cd.geometry)) AS lng,
-                       pop.avg_population AS population
+                       pop.avg_population AS population,
+                       score.district_score AS district_score
                 FROM commercial_district cd
                 LEFT JOIN LATERAL (
                     SELECT pt.avg_population
@@ -81,6 +82,20 @@ def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db))
                     ORDER BY pt.year_quarter DESC
                     LIMIT 1
                 ) pop ON true
+                LEFT JOIN LATERAL (
+                    SELECT AVG(bc.district_score) AS district_score
+                    FROM business_category bc
+                    WHERE bc.commercial_district_id = cd.id
+                      AND bc.is_deleted = false
+                      AND bc.year_quarter = (
+                        SELECT bc2.year_quarter
+                        FROM business_category bc2
+                        WHERE bc2.commercial_district_id = cd.id
+                          AND bc2.is_deleted = false
+                        ORDER BY bc2.year_quarter DESC
+                        LIMIT 1
+                      )
+                ) score ON true
                 WHERE {where}
                 """
             ),
@@ -110,7 +125,8 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
                 f"""
                 SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
                        ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0003), 6) AS geojson,
-                       pop.avg_population AS population
+                       pop.avg_population AS population,
+                       score.district_score AS district_score
                 FROM commercial_district cd
                 LEFT JOIN LATERAL (
                     SELECT pt.avg_population
@@ -121,6 +137,20 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
                     ORDER BY pt.year_quarter DESC
                     LIMIT 1
                 ) pop ON true
+                LEFT JOIN LATERAL (
+                    SELECT AVG(bc.district_score) AS district_score
+                    FROM business_category bc
+                    WHERE bc.commercial_district_id = cd.id
+                      AND bc.is_deleted = false
+                      AND bc.year_quarter = (
+                        SELECT bc2.year_quarter
+                        FROM business_category bc2
+                        WHERE bc2.commercial_district_id = cd.id
+                          AND bc2.is_deleted = false
+                        ORDER BY bc2.year_quarter DESC
+                        LIMIT 1
+                      )
+                ) score ON true
                 WHERE {where}
                 """
             ),
@@ -139,6 +169,7 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
                 "type_name": r["type_name"],
                 "gu_name": r["gu_name"],
                 "population": r["population"],
+                "district_score": r["district_score"],
             },
         }
         for r in rows
