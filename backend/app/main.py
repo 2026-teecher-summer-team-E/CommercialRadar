@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from prometheus_fastapi_instrumentator import Instrumentator
 
 from app.core.config import settings
 from app.core.telemetry import setup_telemetry
@@ -30,6 +31,10 @@ try:
 except Exception:  # DB import 실패해도 앱은 뜨게
     engine = None
 setup_telemetry(app, engine)
+
+# Prometheus 메트릭 노출 — GET /metrics (http_requests_total, http_request_duration_seconds).
+# Prometheus가 내부 네트워크(backend:8000/metrics)로 스크레이프한다. RPS·지연·에러율 산출.
+Instrumentator().instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 app.add_middleware(
     CORSMiddleware,
