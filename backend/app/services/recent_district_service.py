@@ -22,6 +22,11 @@ class RecentDistrictService:
         pipe.execute()
 
     @staticmethod
+    def list_for_user(redis_client: Redis, user_id: int) -> list[dict]:
+        raw_items = redis_client.lrange(RecentDistrictService._key(user_id), 0, MAX_ITEMS - 1)
+        return [json.loads(raw) for raw in raw_items]
+
+    @staticmethod
     def add(redis_client: Redis, user_id: int, item: dict) -> dict:
         key = RecentDistrictService._key(user_id)
         existing = [json.loads(raw) for raw in redis_client.lrange(key, 0, -1)]
