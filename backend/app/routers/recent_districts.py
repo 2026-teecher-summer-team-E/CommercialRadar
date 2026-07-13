@@ -9,6 +9,17 @@ from app.services.recent_district_service import RecentDistrictService
 router = APIRouter(tags=["recent-districts"])
 
 
+@router.get(
+    "/recent-districts",
+    response_model=list[RecentDistrictResponse],
+)
+def list_recent_districts(
+    redis_client: Redis = Depends(get_redis),
+    current_user: User = Depends(get_current_user),
+):
+    return RecentDistrictService.list_for_user(redis_client, current_user.id)
+
+
 @router.post(
     "/recent-districts",
     response_model=RecentDistrictResponse,
