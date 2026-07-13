@@ -80,6 +80,15 @@ def test_update_memo_null_clears(client, seed_district):
     assert res.json()["memo"] is None
 
 
+def test_update_memo_empty_string_clears(client, seed_district):
+    created = _create(client, seed_district, memo="지울 메모")
+
+    res = client.patch(f"/api/interest-districts/{created['id']}", json={"memo": ""})
+
+    assert res.status_code == 200
+    assert res.json()["memo"] is None  # "" 는 None으로 정규화
+
+
 def test_update_ignores_category_name(client, seed_district):
     created = _create(client, seed_district, memo="m", category="카페")
 
