@@ -109,6 +109,9 @@ services:
     environment:
       - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:-admin}
       - GF_AUTH_ANONYMOUS_ENABLED=false
+      # 패널/대시보드 PNG 렌더링 활성 (Share → 이미지 렌더 버튼)
+      - GF_RENDERING_SERVER_URL=http://grafana-image-renderer:8081/render
+      - GF_RENDERING_CALLBACK_URL=http://grafana:3000/
     ports:
       - "127.0.0.1:3000:3000"         # Grafana UI (SSH 터널로만)
     volumes:
@@ -119,6 +122,12 @@ services:
       - tempo
       - jaeger
       - prometheus
+      - grafana-image-renderer
+    restart: unless-stopped
+
+  # Grafana 패널/대시보드 PNG 렌더링(헤드리스 크롬). 외부 미노출(grafana만 접근).
+  grafana-image-renderer:
+    image: grafana/grafana-image-renderer:3.11.6
     restart: unless-stopped
 
 volumes:
