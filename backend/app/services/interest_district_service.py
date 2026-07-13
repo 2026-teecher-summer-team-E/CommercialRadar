@@ -3,7 +3,7 @@ from sqlalchemy.orm import Session
 
 from app.models.commercial_district import CommercialDistrict
 from app.models.interest_district import InterestDistrict
-from app.schemas.interest_district import InterestDistrictCreate
+from app.schemas.interest_district import InterestDistrictCreate, InterestDistrictUpdate
 
 
 class InterestDistrictService:
@@ -38,6 +38,34 @@ class InterestDistrictService:
 
         interest_district.is_deleted = True
         db.commit()
+
+    @staticmethod
+    def update(
+        db: Session,
+        user_id: int,
+        interest_district_id: int,
+        body: InterestDistrictUpdate,
+    ) -> InterestDistrict:
+        interest_district = (
+            db.query(InterestDistrict)
+            .filter(
+                InterestDistrict.id == interest_district_id,
+                InterestDistrict.user_id == user_id,
+                InterestDistrict.is_deleted.is_(False),
+            )
+            .first()
+        )
+        if not interest_district:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Interest district not found",
+            )
+
+        # memo만 수정한다. category_name 등 다른 필드는 변경하지 않는다.
+        interest_district.memo = body.memo
+        db.commit()
+        db.refresh(interest_district)
+        return interest_district
 
     @staticmethod
     def create(db: Session, user_id: int, body: InterestDistrictCreate) -> InterestDistrict:
