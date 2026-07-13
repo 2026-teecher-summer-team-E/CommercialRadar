@@ -69,6 +69,41 @@ services:
       - loki
     restart: unless-stopped
 
+  # 메트릭 수집기 — backend(/metrics)·postgres-exporter·cadvisor를 스크레이프.
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.retention.time=15d"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    depends_on:
+      - postgres-exporter
+      - cadvisor
+    restart: unless-stopped
+
+  # Postgres 메트릭 — TPS(xact commit/rollback)·데드락·커넥션 수.
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.16.0
+    environment:
+      - DATA_SOURCE_NAME=postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-commercialradar}?sslmode=disable
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  # 컨테이너 CPU·메모리 메트릭.
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    privileged: true
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+      - /dev/disk/:/dev/disk:ro
+    restart: unless-stopped
+
   grafana:
     image: grafana/grafana:11.2.0
     environment:
@@ -83,9 +118,11 @@ services:
       - loki
       - tempo
       - jaeger
+      - prometheus
     restart: unless-stopped
 
 volumes:
   tempo_data:
   loki_data:
   grafana_data:
+  prometheus_data:
