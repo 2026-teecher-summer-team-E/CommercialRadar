@@ -547,6 +547,7 @@ def ingest_seoul_rent(db: Session | None = None) -> IngestionRun:
 # ──────────────────────────────────────────────────────────────────────────────
 
 def ingest_buzz(db: Session | None = None) -> IngestionRun:
+    """네이버 데이터랩 검색어 트렌드 → buzz_stats 적재 (5개 상권 1회 호출)."""
     """네이버 데이터랩 검색어 트렌드 → buzz_stats 적재.
 
     유동인구 상위 BUZZ_TARGET_LIMIT개 상권(발달상권·관광특구)을 앵커(강남역) 포함

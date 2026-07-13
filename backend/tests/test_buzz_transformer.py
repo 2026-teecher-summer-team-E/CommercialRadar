@@ -44,9 +44,9 @@ def test_build_datalab_payload_groups_by_district_id():
     ]
 
 
-def test_buzz_districts_has_three_targets():
+def test_buzz_districts_has_five_targets():
     ids = {d["district_id"] for d in BUZZ_DISTRICTS}
-    assert ids == {1315, 1225, 1260}
+    assert ids == {1315, 1225, 1260, 1101, 1290}
 
 
 def test_transform_takes_window_max_and_latest_month():
