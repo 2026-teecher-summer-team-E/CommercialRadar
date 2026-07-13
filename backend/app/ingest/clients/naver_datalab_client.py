@@ -1,6 +1,6 @@
 """네이버 데이터랩 검색어 트렌드 API 클라이언트.
 
-Extract 단계만 담당한다. 3개 상권(≤5)을 1회 호출에 넣으면 응답 전체에서
+Extract 단계만 담당한다. 5개 상권(≤5)을 1회 호출에 넣으면 응답 전체에서
 최댓값=100으로 정규화되어 반환되므로 상권 간 직접 비교가 가능하다(앵커 불필요).
 응답 구조:
   { "startDate","endDate","timeUnit",
@@ -20,10 +20,16 @@ DATALAB_URL = "https://openapi.naver.com/v1/datalab/search"
 BUZZ_SOURCE = "naver_datalab"
 
 # 대상 상권 (id 고정) → 검색 키워드
+# 데이터랩 API는 1회 호출당 최대 5개 keywordGroups만 허용하고, 응답은 그 호출
+# 내에서만 최댓값=100으로 상대 정규화되므로 5개를 넘기면 배치를 나눠야 하고
+# 배치 간 화제성 지수를 직접 비교할 수 없게 된다. 5개가 단일 호출 안에서
+# 비교 가능한 상한이다.
 BUZZ_DISTRICTS: list[dict] = [
     {"district_id": 1315, "keywords": ["강남역", "강남"]},
     {"district_id": 1225, "keywords": ["명동"]},
     {"district_id": 1260, "keywords": ["여의도"]},
+    {"district_id": 1101, "keywords": ["홍대", "홍대입구"]},
+    {"district_id": 1290, "keywords": ["잠실", "잠실역"]},
 ]
 
 
