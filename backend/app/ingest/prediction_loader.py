@@ -99,11 +99,20 @@ def _upsert_batch(db: Session, rows: list[dict]) -> int:
     return len(rows)
 
 
-def load_predictions_csv(db: Session, csv_path: str) -> tuple[int, int, int]:
+def load_predictions_csv(
+    db: Session, csv_path: str, progress: dict | None = None
+) -> tuple[int, int, int]:
     """CSV를 읽어 ml_predictions에 upsert. (total, upserted, failed) 반환.
 
     깨진 행(JSON 파싱 실패·검증 실패)은 스킵하고 경고 로그를 남긴다.
+
+    progress: 배치 커밋마다 갱신되는 out 파라미터. 중간 배치에서 예외가 나
+    반환값 없이 raise돼도, 호출부가 progress["upserted"]로 그 시점까지
+    실제 커밋된 건수를 알 수 있게 한다(부분 성공 시 캐시 무효화 판단용).
     """
+    if progress is None:
+        progress = {}
+    progress["upserted"] = 0
     header_checked = False
     valid_rows: list[dict] = []
     total = 0
@@ -138,6 +147,7 @@ def load_predictions_csv(db: Session, csv_path: str) -> tuple[int, int, int]:
         try:
             upserted += _upsert_batch(db, batch)
             db.commit()
+            progress["upserted"] = upserted
         except Exception:
             db.rollback()
             logger.exception("예측 배치 upsert 실패 (start=%d, size=%d)", start, len(batch))
@@ -160,8 +170,9 @@ def import_predictions(csv_path: str, db: Session | None = None) -> IngestionRun
     db.commit()
     db.refresh(run)
 
+    progress: dict = {"upserted": 0}
     try:
-        total, upserted, failed = load_predictions_csv(db, csv_path)
+        total, upserted, failed = load_predictions_csv(db, csv_path, progress)
 
         run.status = "success"
         run.fetched_count = total
@@ -173,8 +184,6 @@ def import_predictions(csv_path: str, db: Session | None = None) -> IngestionRun
             "예측 적재 완료 [%s]: file=%s total=%d upserted=%d failed=%d",
             source, csv_path, total, upserted, failed,
         )
-        # survival/sales/population-forecast 응답 캐시는 예측 배치가 갱신돼야 바뀐다.
-        invalidate_all()
         return run
     except Exception as exc:
         db.rollback()
@@ -185,5 +194,10 @@ def import_predictions(csv_path: str, db: Session | None = None) -> IngestionRun
         logger.exception("예측 적재 실패 [%s] file=%s", source, csv_path)
         raise
     finally:
+        # 배치별 커밋 구조상 후속 배치 실패로도 앞선 배치는 이미 DB에 반영돼 있다.
+        # survival/sales/population-forecast 응답 캐시가 그 반영분을 놓치지 않도록,
+        # 하나 이상 커밋됐으면 성공/실패 경로 무관하게 무효화한다.
+        if progress["upserted"] > 0:
+            invalidate_all()
         if owns_session:
             db.close()
