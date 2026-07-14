@@ -13,6 +13,7 @@ from geoalchemy2.elements import WKTElement
 from app.core import response_cache
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
+from app.models.population_timeseries import PopulationTimeseries
 
 
 def _square_polygon(lat: float = 37.5, lng: float = 127.0, half_size: float = 0.001) -> WKTElement:
@@ -110,6 +111,41 @@ def test_radar_second_request_is_cached(client, db, fake_redis):
     db.flush()
 
     second = client.get(f"/api/commercial-districts/{district.id}/radar")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
+def test_per_capita_sales_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-3")
+    db.add(
+        BusinessCategory(
+            commercial_district_id=district.id,
+            category_name="한식",
+            year_quarter="2024-Q4",
+            total_sales=1000,
+        )
+    )
+    db.add(
+        PopulationTimeseries(
+            commercial_district_id=district.id,
+            year_quarter="2024-Q4",
+            dimension="total",
+            slot="total",
+            avg_population=100,
+        )
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/per-capita-sales")
+    assert first.status_code == 200
+    assert first.json()["per_capita_sales"] == 10
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/per-capita-sales")
     assert second.status_code == 200
     assert second.json() == first.json()
 
