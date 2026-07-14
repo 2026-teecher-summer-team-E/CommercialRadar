@@ -31,6 +31,29 @@ class LatestStatsOut(BaseModel):
     survival_rate: float | None = None
     closure_rate: float | None = None
     total_business: int | None = None
+    # 종합점수(district_score) 순위 — rank_scope 모집단 기준. 점수 없으면 전부 null.
+    score_rank: int | None = None
+    score_rank_total: int | None = None
+    score_percentile: float | None = None
+    rank_scope: str | None = None  # "seoul" | "gu" | "type"
+
+
+class DistrictRankingItem(BaseModel):
+    """종합점수 순위 조회(GET /commercial-districts/ranking) 1건.
+
+    id는 API 전반과 일관되게 상권 id다(프론트 요청서의 district_id에 해당).
+    """
+
+    rank: int
+    rank_total: int
+    percentile: float
+    id: int
+    district_name: str
+    gu_name: str | None = None
+    type_name: str | None = None
+    district_score: float | None = None
+    survival_rate: float | None = None
+    avg_population: float | None = None
 
 
 class CommercialDistrictDetailOut(BaseModel):
