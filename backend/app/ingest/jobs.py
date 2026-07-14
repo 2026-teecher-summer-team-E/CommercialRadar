@@ -670,12 +670,12 @@ def ingest_category_trend(db: Session | None = None) -> IngestionRun:
                 )
             ]
 
-        responses = fetch_category_trend_batched(category_names, months=6)
+        responses, failed_raw = fetch_category_trend_batched(category_names, months=6)
         rows = transform_batched_category_responses(responses)
         upserted = upsert_category_trend(db, rows)
         fetched = sum(len(r.get("results", [])) for r in responses)
 
-        anchor_responses = fetch_category_trend_batched_with_anchor(category_names, months=6)
+        anchor_responses, failed_anchor = fetch_category_trend_batched_with_anchor(category_names, months=6)
         anchor_rows = transform_batched_category_responses_with_anchor(anchor_responses, CATEGORY_ANCHOR)
         upserted += upsert_category_trend(db, anchor_rows)
         fetched += sum(len(r.get("results", [])) for r in anchor_responses)
@@ -683,7 +683,7 @@ def ingest_category_trend(db: Session | None = None) -> IngestionRun:
         run.status = "success"
         run.fetched_count = fetched
         run.upserted_count = upserted
-        run.failed_count = 0
+        run.failed_count = failed_raw + failed_anchor
         run.finished_at = func.now()
         db.commit()
         logger.info(
@@ -695,12 +695,15 @@ def ingest_category_trend(db: Session | None = None) -> IngestionRun:
     except Exception as exc:
         db.rollback()
         if run is not None:
-            fetched = len(rows) if "rows" in locals() else 0
+            # 두 단계(앵커 없음/앵커) 중 일부만 끝낸 채 실패할 수 있어, 이미 집계된
+            # fetched/upserted가 있으면 0으로 덮어쓰지 않고 그대로 반영한다.
+            fetched_so_far = fetched if "fetched" in locals() else 0
+            upserted_so_far = upserted if "upserted" in locals() else 0
             run.status = "failed"
             run.error_message = str(exc)[:2000]
-            run.fetched_count = fetched
-            run.upserted_count = 0
-            run.failed_count = fetched
+            run.fetched_count = fetched_so_far
+            run.upserted_count = upserted_so_far
+            run.failed_count = max(fetched_so_far - upserted_so_far, 0)
             run.finished_at = func.now()
             db.commit()
         logger.exception("인제스천 실패 [%s]", source)

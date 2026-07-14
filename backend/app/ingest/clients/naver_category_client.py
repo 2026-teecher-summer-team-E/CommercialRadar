@@ -136,11 +136,15 @@ def fetch_category_trend(category_names: list[str], months: int = 6) -> dict:
     return data
 
 
-def _fetch_batches_with_retry(batches: list[list[str]], months: int) -> list[dict]:
+def _fetch_batches_with_retry(batches: list[list[str]], months: int) -> tuple[list[dict], int]:
     """배치 리스트를 순회하며 호출한다. 배치 사이에 지연을 두고, 실패한 배치는
-    백오프 후 재시도한다. 재시도까지 실패하면 경고 후 다음 배치를 계속한다.
+    백오프 후 재시도한다. 재시도까지 실패하면 경고 후 다음 배치를 계속하되,
+    스킵된 배치에 담겼던 업종 수를 합산해 반환한다(ingestion_run.failed_count 반영용).
+
+    반환: (성공 응답 리스트, 재시도까지 실패해 스킵된 업종 수)
     """
     responses: list[dict] = []
+    failed_items = 0
     for i, batch in enumerate(batches, 1):
         if i > 1:
             time.sleep(BATCH_DELAY_SEC)
@@ -159,24 +163,27 @@ def _fetch_batches_with_retry(batches: list[list[str]], months: int) -> list[dic
                     time.sleep(backoff)
                 else:
                     logger.exception("업종 데이터랩 배치 %d/%d 재시도 소진, 스킵", i, len(batches))
-    return responses
+                    failed_items += len(batch)
+    return responses, failed_items
 
 
-def fetch_category_trend_batched(category_names: list[str], months: int = 6) -> list[dict]:
+def fetch_category_trend_batched(category_names: list[str], months: int = 6) -> tuple[list[dict], int]:
     """업종명 전체를 배치로 나눠 데이터랩을 여러 번 호출한다(앵커 없음).
 
     rising/sinking 판정처럼 업종 자기 자신의 시계열끼리만 비교하는 용도에 쓴다.
+    반환: (성공 응답 리스트, 재시도까지 실패해 스킵된 업종 수)
     """
     return _fetch_batches_with_retry(build_category_batches(category_names), months)
 
 
 def fetch_category_trend_batched_with_anchor(
     category_names: list[str], months: int = 6, anchor: str = CATEGORY_ANCHOR
-) -> list[dict]:
+) -> tuple[list[dict], int]:
     """업종명 전체를 앵커 포함 배치로 나눠 데이터랩을 여러 번 호출한다.
 
     "많이 검색된 업종"처럼 업종 간 절대값을 비교해야 하는 용도에 쓴다
     (transformer가 앵커 대비로 재정규화해야 배치 간 비교가 가능해진다).
+    반환: (성공 응답 리스트, 재시도까지 실패해 스킵된 업종 수)
     """
     return _fetch_batches_with_retry(
         build_category_batches_with_anchor(category_names, anchor=anchor), months
