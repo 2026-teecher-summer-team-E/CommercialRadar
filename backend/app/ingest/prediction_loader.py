@@ -24,6 +24,7 @@ from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
+from app.core.response_cache import invalidate_all
 from app.database import SessionLocal
 from app.models.ingestion_run import IngestionRun
 from app.models.ml_predictions import MlPrediction
@@ -172,6 +173,8 @@ def import_predictions(csv_path: str, db: Session | None = None) -> IngestionRun
             "예측 적재 완료 [%s]: file=%s total=%d upserted=%d failed=%d",
             source, csv_path, total, upserted, failed,
         )
+        # survival/sales/population-forecast 응답 캐시는 예측 배치가 갱신돼야 바뀐다.
+        invalidate_all()
         return run
     except Exception as exc:
         db.rollback()

@@ -5,6 +5,7 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
+from app.core.response_cache import cached_response
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.models.population_timeseries import PopulationTimeseries
@@ -146,7 +147,20 @@ def get_survival_forecast(
             detail="Model not loaded: survival-forecast",
         )
 
-    # 3. category 필터 (미입력 → 전체합산 sentinel 행). 요청 업종 데이터 없으면 빈 200.
+    # 3. 무거운 조회+가공만 캐시 (분기 단위 배치 갱신 → load-predictions CLI가 invalidate_all() 호출).
+    #    404/503 판단은 캐시 밖에서 매번 최신 상태로 확인한다(위 1, 2단계).
+    cache_params = {"district_id": district_id, "quarters": quarters, "category_name": category_name}
+    return cached_response(
+        "survival-forecast",
+        cache_params,
+        lambda: _compute_survival_forecast(db, district_id, quarters, category_name),
+    )
+
+
+def _compute_survival_forecast(
+    db: Session, district_id: int, quarters: int, category_name: str | None
+) -> SurvivalForecastResponse:
+    # category 필터 (미입력 → 전체합산 sentinel 행). 요청 업종 데이터 없으면 빈 200.
     target_category = category_name if category_name is not None else AGGREGATE_CATEGORY
     rows = (
         db.query(MlPrediction)
