@@ -9,6 +9,7 @@ from app.routers import (
     analysis,
     businesses,
     buzz,
+    category_trend,
     commercial,
     commercial_districts,
     forecast,
@@ -69,6 +70,7 @@ app.include_router(recent_districts.router, prefix="/api")
 app.include_router(users.router, prefix="/api")
 app.include_router(webhooks.router, prefix="/api")
 app.include_router(buzz.router, prefix="/api")
+app.include_router(category_trend.router, prefix="/api")
 app.include_router(admin.router)
 
 
