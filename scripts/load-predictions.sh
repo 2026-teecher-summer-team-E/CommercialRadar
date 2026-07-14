@@ -27,7 +27,13 @@ for arg in "$@"; do
     --prod) COMPOSE_FILE="docker-compose.prod.yml" ;;
     --local) COMPOSE_FILE="docker-compose.yml" ;;
     -*) echo "알 수 없는 옵션: $arg" >&2; exit 2 ;;
-    *) CSV="$arg" ;;
+    *)
+      if [ -n "$CSV" ]; then
+        echo "CSV 경로는 하나만 지정할 수 있습니다: '$CSV', '$arg'" >&2
+        exit 2
+      fi
+      CSV="$arg"
+      ;;
   esac
 done
 
@@ -41,7 +47,14 @@ if [ ! -f "$CSV" ]; then
 fi
 
 BASENAME="$(basename "$CSV")"
-DEST="/tmp/${BASENAME}"
+# 호출별 고유 경로($$=PID)로 동시 실행 시 컨테이너 임시 파일이 서로 덮이지 않게 한다.
+DEST="/tmp/load-predictions.$$.${BASENAME}"
+
+# 적재 후(성공·실패 무관) 컨테이너 임시 파일을 제거한다.
+cleanup() {
+  docker compose -f "${COMPOSE_FILE}" exec -T backend rm -f "${DEST}" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
 
 echo "[load-predictions] compose=${COMPOSE_FILE}  csv=${CSV}"
 docker compose -f "${COMPOSE_FILE}" cp "${CSV}" "backend:${DEST}"

@@ -53,6 +53,7 @@ def _compute_metrics(db: Session) -> list[dict]:
          AND bc.is_deleted = false
         WHERE cd.is_deleted = false
         GROUP BY cd.id, cd.district_name, cd.gu_name, cd.type_name, cd.avg_population
+        ORDER BY cd.id
         """
     )
 
@@ -81,7 +82,8 @@ def _metrics_cached(db: Session, redis_client: Redis | None) -> list[dict]:
         cached = redis_client.get(_CACHE_KEY)
         if cached is not None:
             return json.loads(cached)
-    except RedisError:
+    except (RedisError, ValueError):
+        # RedisError=장애, ValueError(JSONDecodeError 포함)=캐시 손상. 둘 다 직접 연산 폴백.
         return _compute_metrics(db)
 
     metrics = _compute_metrics(db)
@@ -100,6 +102,11 @@ def _population(
         return [m for m in metrics if m["gu_name"] == gu_name]
     if scope == "type" and type_name:
         return [m for m in metrics if m["type_name"] == type_name]
+    # gu/type scope인데 기준값(gu_name/type_name)이 없으면 모집단을 특정할 수 없다.
+    # 전체(seoul)로 폴백하면 실제론 서울 순위인데 rank_scope='gu'로 거짓 라벨링되므로
+    # 빈 모집단을 반환한다(→ get_district_rank는 None, get_ranking은 빈 리스트).
+    if scope in ("gu", "type"):
+        return []
     return metrics
 
 
@@ -109,9 +116,12 @@ def _ranked(pop: list[dict], sort: str) -> list[dict]:
     percentile = 상위 백분위(상위일수록 100에 가까움). 동점은 위치 기반으로 처리한다.
     """
     field = _SORT_FIELDS[sort]
+    # 정렬값 내림차순, 동점은 id 오름차순으로 고정한다. (field, -id) 튜플을 reverse=True로
+    # 정렬하면 field는 desc, -id도 desc(=id asc)가 되어 순위가 결정적이다. 이렇게 하지
+    # 않으면 동점 상권의 순위가 캐시/입력 순서에 따라 흔들린다.
     ordered = sorted(
         (m for m in pop if m.get(field) is not None),
-        key=lambda m: m[field],
+        key=lambda m: (m[field], -m["id"]),
         reverse=True,
     )
     total = len(ordered)
