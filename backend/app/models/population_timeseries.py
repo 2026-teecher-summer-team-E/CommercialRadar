@@ -1,5 +1,5 @@
 from sqlalchemy import (
-    BigInteger, Boolean, Column, DateTime, Enum, Float, ForeignKey, String, UniqueConstraint,
+    BigInteger, Boolean, Column, DateTime, Enum, Float, ForeignKey, Index, String, UniqueConstraint,
 )
 from sqlalchemy.sql import func
 
@@ -28,6 +28,9 @@ class PopulationTimeseries(Base):
             "commercial_district_id", "year_quarter", "dimension", "slot",
             name="uq_pop_ts_cd_yq_dim_slot",
         ),
+        # dimension+year_quarter 필터(예: buzz-gap의 total 유동인구 조회)용.
+        # 유니크 인덱스 leftmost가 commercial_district_id라 이 필터엔 못 쓰임 → 별도 인덱스.
+        Index("ix_pop_ts_dim_yq", "dimension", "year_quarter"),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
