@@ -41,7 +41,7 @@ def test_build_category_batches_respects_group_limit():
     batches = build_category_batches(names, group_limit=5)
     assert len(batches) == 3  # 12개 / 5개씩 → 3배치
     assert [len(b) for b in batches] == [5, 5, 2]
-    assert sum(batches, []) == names
+    assert [name for batch in batches for name in batch] == names
 
 
 def test_transform_category_response_flattens_all_periods():
