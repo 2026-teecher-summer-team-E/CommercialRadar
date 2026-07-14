@@ -2,6 +2,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
+from app.core.response_cache import invalidate_all
 from app.database import SessionLocal
 from app.models.ingestion_run import IngestionRun
 
@@ -82,6 +83,9 @@ class BusinessScoreService:
                 run.upserted_count = result.rowcount
                 run.finished_at = func.now()
                 db.commit()
+                # district_score가 바뀌었으니 이를 담은 응답 캐시(상세/ranking/compare/
+                # category-stats 등)도 무효화한다.
+                invalidate_all()
                 return run
             except Exception as exc:
                 db.rollback()
