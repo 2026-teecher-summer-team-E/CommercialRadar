@@ -1,13 +1,15 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
+from redis import Redis
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
 from app.core.caching import apply_http_cache
-from app.core.deps import get_db
+from app.core.deps import get_db, get_redis
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
+from app.services import ranking_service
 from app.schemas.commercial import (
     CommercialDistrictDetailOut,
     CommercialDistrictSearchOut,
@@ -285,8 +287,13 @@ def get_sales_time_bands(district_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
-def get_commercial_district(district_id: int, db: Session = Depends(get_db)):
-    """상권 기본 정보 + business_category 최신 분기 전체 업종 집계."""
+def get_commercial_district(
+    district_id: int,
+    rank_scope: str = Query("seoul", pattern="^(seoul|gu|type)$", description="종합점수 순위 모집단"),
+    db: Session = Depends(get_db),
+    redis_client: Redis = Depends(get_redis),
+):
+    """상권 기본 정보 + business_category 최신 분기 전체 업종 집계 (종합점수 순위 포함)."""
     district = (
         db.query(CommercialDistrict)
         .filter(
@@ -323,6 +330,15 @@ def get_commercial_district(district_id: int, db: Session = Depends(get_db)):
             closure_rate=closure_rate,
             total_business=total_business,
         )
+        # 종합점수 순위 주입 (rank_scope 모집단 기준). 무거운 전체 집계는 Redis 캐시.
+        rank = ranking_service.get_district_rank(
+            db, redis_client, district_id, scope=rank_scope
+        )
+        if rank is not None:
+            latest_stats.score_rank = rank["score_rank"]
+            latest_stats.score_rank_total = rank["score_rank_total"]
+            latest_stats.score_percentile = rank["score_percentile"]
+            latest_stats.rank_scope = rank["rank_scope"]
 
     return CommercialDistrictDetailOut(
         id=district.id,
