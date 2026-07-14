@@ -1,7 +1,8 @@
 from fastapi import APIRouter, Depends, Query
+from redis import Redis
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db
+from app.core.deps import get_db, get_redis
 from app.schemas.buzz import BuzzGapResponse
 from app.services.buzz_gap_service import get_buzz_gap
 
@@ -15,6 +16,9 @@ def buzz_gap(
     sort: str = Query("spend_gap", pattern="^(spend_gap|visit_gap)$"),
     limit: int | None = Query(None, ge=1),
     db: Session = Depends(get_db),
+    redis_client: Redis = Depends(get_redis),
 ):
     """상권 화제성-실속 gap 랭킹. gap>0=화제성만↑, gap<0=숨은 실속."""
-    return get_buzz_gap(db, period=period, source=source, sort=sort, limit=limit)
+    return get_buzz_gap(
+        db, period=period, source=source, sort=sort, limit=limit, redis_client=redis_client
+    )
