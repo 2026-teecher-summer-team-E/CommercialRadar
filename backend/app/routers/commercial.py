@@ -1,9 +1,10 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from sqlalchemy import func, or_, text
 from sqlalchemy.orm import Session
 
+from app.core.caching import apply_http_cache
 from app.core.deps import get_db
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
@@ -56,7 +57,12 @@ def list_commercial_districts(
 
 
 @router.get("/commercial-districts/geo", response_model=list[DistrictGeoOut])
-def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db)):
+def list_district_geo(
+    request: Request,
+    response: Response,
+    gu_name: str | None = None,
+    db: Session = Depends(get_db),
+):
     """모든 상권의 중심좌표(geometry centroid). Leaflet 지도 마커용. gu_name 으로 자치구 필터 가능."""
     where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
     params: dict[str, str] = {}
@@ -97,6 +103,7 @@ def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db))
                       )
                 ) score ON true
                 WHERE {where}
+                ORDER BY cd.id
                 """
             ),
             params,
@@ -104,11 +111,20 @@ def list_district_geo(gu_name: str | None = None, db: Session = Depends(get_db))
         .mappings()
         .all()
     )
-    return [DistrictGeoOut(**row) for row in rows]
+    result = [DistrictGeoOut(**row) for row in rows]
+    cached = apply_http_cache(request, response, result, max_age=3600)
+    if cached is not None:
+        return cached
+    return result
 
 
 @router.get("/commercial-districts/geojson")
-def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_db)):
+def list_district_geojson(
+    request: Request,
+    response: Response,
+    gu_name: str | None = None,
+    db: Session = Depends(get_db),
+):
     """상권 경계 폴리곤을 GeoJSON FeatureCollection 으로 반환(Leaflet 구역 표시용).
 
     ST_SimplifyPreserveTopology 로 단순화(≈30m)하고 좌표 정밀도 6자리로 낮춰 용량을 줄인다.
@@ -152,6 +168,7 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
                       )
                 ) score ON true
                 WHERE {where}
+                ORDER BY cd.id
                 """
             ),
             params,
@@ -175,7 +192,11 @@ def list_district_geojson(gu_name: str | None = None, db: Session = Depends(get_
         for r in rows
         if r["geojson"]
     ]
-    return {"type": "FeatureCollection", "features": features}
+    payload = {"type": "FeatureCollection", "features": features}
+    cached = apply_http_cache(request, response, payload, max_age=3600)
+    if cached is not None:
+        return cached
+    return payload
 
 
 def _latest_business_quarter(db: Session, district_id: int) -> str | None:
