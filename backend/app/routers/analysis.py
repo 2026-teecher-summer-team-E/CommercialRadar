@@ -73,19 +73,7 @@ def get_commercial_district_rent(
     db: Session = Depends(get_db),
 ):
     """상권 ID 기준으로 분기별·상가유형별 임대료를 반환합니다."""
-    district_exists = db.scalar(
-        select(CommercialDistrict.id).where(
-            CommercialDistrict.id == district_id,
-            CommercialDistrict.is_deleted.is_(False),
-        )
-    )
-    if district_exists is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="상권을 찾을 수 없습니다",
-        )
-
-    selected_quarter = year_quarter.strip() if year_quarter else None
+    selected_quarter_input = year_quarter.strip() if year_quarter else None
     selected_floor = floor_type.strip() if floor_type else None
     if selected_floor and selected_floor not in ALLOWED_RENT_FLOOR_TYPES:
         raise HTTPException(
@@ -93,47 +81,68 @@ def get_commercial_district_rent(
             detail="floor_type은 소규모, 중대형, 집합 중 하나여야 합니다",
         )
 
-    if not selected_quarter:
-        selected_quarter = db.scalar(
-            select(func.max(RentStat.year_quarter)).where(
-                RentStat.commercial_district_id == district_id,
-                RentStat.is_deleted.is_(False),
+    def _compute():
+        district_exists = db.scalar(
+            select(CommercialDistrict.id).where(
+                CommercialDistrict.id == district_id,
+                CommercialDistrict.is_deleted.is_(False),
             )
         )
+        if district_exists is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="상권을 찾을 수 없습니다",
+            )
 
-    if selected_quarter is None:
+        selected_quarter = selected_quarter_input
+        if not selected_quarter:
+            selected_quarter = db.scalar(
+                select(func.max(RentStat.year_quarter)).where(
+                    RentStat.commercial_district_id == district_id,
+                    RentStat.is_deleted.is_(False),
+                )
+            )
+
+        if selected_quarter is None:
+            return {
+                "district_id": district_id,
+                "year_quarter": None,
+                "rent_stats": [],
+            }
+
+        stmt = (
+            select(RentStat.floor_type, RentStat.avg_rent_per_sqm)
+            .where(
+                RentStat.commercial_district_id == district_id,
+                RentStat.year_quarter == selected_quarter,
+                RentStat.is_deleted.is_(False),
+            )
+            .order_by(RentStat.floor_type.asc())
+        )
+
+        if selected_floor:
+            stmt = stmt.where(RentStat.floor_type == selected_floor)
+
+        rent_stats = [
+            {
+                "floor_type": row.floor_type,
+                "avg_rent_per_sqm": row.avg_rent_per_sqm,
+            }
+            for row in db.execute(stmt).all()
+        ]
+
         return {
             "district_id": district_id,
-            "year_quarter": None,
-            "rent_stats": [],
+            "year_quarter": selected_quarter,
+            "rent_stats": rent_stats,
         }
 
-    stmt = (
-        select(RentStat.floor_type, RentStat.avg_rent_per_sqm)
-        .where(
-            RentStat.commercial_district_id == district_id,
-            RentStat.year_quarter == selected_quarter,
-            RentStat.is_deleted.is_(False),
-        )
-        .order_by(RentStat.floor_type.asc())
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response(
+        "rent",
+        {"district_id": district_id, "year_quarter": selected_quarter_input, "floor_type": selected_floor},
+        _compute,
     )
-
-    if selected_floor:
-        stmt = stmt.where(RentStat.floor_type == selected_floor)
-
-    rent_stats = [
-        {
-            "floor_type": row.floor_type,
-            "avg_rent_per_sqm": row.avg_rent_per_sqm,
-        }
-        for row in db.execute(stmt).all()
-    ]
-
-    return {
-        "district_id": district_id,
-        "year_quarter": selected_quarter,
-        "rent_stats": rent_stats,
-    }
 
 
 ALLOWED_METRICS = {"survival_rate", "closure_rate", "open_rate", "population", "sales"}
