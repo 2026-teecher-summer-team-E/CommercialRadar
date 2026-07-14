@@ -22,7 +22,7 @@ class SalesForecaster(GlobalForecaster):
     value_col = "total_sales"
 
     def _load_frame(self, engine):
-        return loaders.load_business_frame(engine)
+        return loaders.load_business_frame(engine, district_ids=self.district_ids)
 
     def _build_model(self):
         from darts.models import TFTModel
@@ -43,6 +43,9 @@ class SalesForecaster(GlobalForecaster):
                 "enable_progress_bar": False,
             },
             random_state=42,
+            # TFT는 future covariates가 필수 — 실제 공변량이 없으므로 시간 인덱스
+            # 상대위치를 자동 생성(add_relative_index)해 요구를 충족한다.
+            add_relative_index=True,
             # TODO: future_covariates(유동인구 예측), static_covariates(업종)
         )
 

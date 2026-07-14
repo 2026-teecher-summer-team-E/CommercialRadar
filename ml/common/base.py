@@ -19,6 +19,7 @@ class PredictionRow(TypedDict, total=False):
     commercial_district_id: int
     prediction_type: str          # 'survival' | 'population' | 'sales'
     target_quarter: str           # 'YYYY-QN'
+    category_name: str            # 업종명. 생략 시 export가 '__ALL__'(전체 합산)
     predicted_value: dict          # 타입별 구조 상이 (JSONB로 저장)
     confidence: float | None
     model_version: str | None
