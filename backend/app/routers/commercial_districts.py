@@ -6,6 +6,7 @@ from sqlalchemy import cast
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db, get_redis
+from app.core.response_cache import cached_response
 from app.models.commercial_district import CommercialDistrict
 from app.schemas.commercial import (
     DistrictCompareResponse,
@@ -72,7 +73,15 @@ def compare_commercial_districts(
     db: Session = Depends(get_db),
 ):
     ids = _parse_district_ids(district_ids)
-    return CommercialService.compare(db, ids, year_quarter, category_name)
+    cache_params = {
+        # id 순서가 달라도 같은 조합이면 같은 캐시를 쓰도록 정렬해 키를 만든다.
+        "district_ids": ",".join(str(i) for i in sorted(ids)),
+        "year_quarter": year_quarter,
+        "category_name": category_name,
+    }
+    return cached_response(
+        "compare", cache_params, lambda: CommercialService.compare(db, ids, year_quarter, category_name)
+    )
 
 
 @router.get("/commercial-districts/nearby", response_model=list[NearbyDistrictOut])

@@ -60,17 +60,23 @@ class CommercialService:
     def _resolve_latest_common_quarter(db: Session, district_ids: list[int]) -> str | None:
         # 요청받은 모든 상권에 공통으로 존재하는 분기 중 가장 최신 것을 선택한다.
         # 공통 분기가 없으면(상권마다 데이터 시점이 어긋나는 경우) 요청 상권들 전체 기준 최신 분기로 폴백한다.
+        # (상권 수만큼 쿼리를 날리던 N+1을 IN절 단일 쿼리로 합침)
+        rows = (
+            db.query(BusinessCategory.commercial_district_id, BusinessCategory.year_quarter)
+            .filter(
+                BusinessCategory.commercial_district_id.in_(district_ids),
+                BusinessCategory.is_deleted.is_(False),
+            )
+            .distinct()
+            .all()
+        )
+        quarters_by_district: dict[int, set[str]] = {}
+        for district_id, year_quarter in rows:
+            quarters_by_district.setdefault(district_id, set()).add(year_quarter)
+
         common: set[str] | None = None
         for district_id in district_ids:
-            quarters = {
-                row[0]
-                for row in db.query(BusinessCategory.year_quarter)
-                .filter(
-                    BusinessCategory.commercial_district_id == district_id,
-                    BusinessCategory.is_deleted.is_(False),
-                )
-                .distinct()
-            }
+            quarters = quarters_by_district.get(district_id, set())
             common = quarters if common is None else common & quarters
 
         if common:

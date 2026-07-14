@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.caching import apply_http_cache
 from app.core.deps import get_db, get_redis
+from app.core.response_cache import cached_response
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.services import ranking_service
@@ -66,54 +67,60 @@ def list_district_geo(
     db: Session = Depends(get_db),
 ):
     """모든 상권의 중심좌표(geometry centroid). Leaflet 지도 마커용. gu_name 으로 자치구 필터 가능."""
-    where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
-    params: dict[str, str] = {}
-    if gu_name:
-        where += " AND cd.gu_name = :gu"
-        params["gu"] = gu_name
-    rows = (
-        db.execute(
-            text(
-                f"""
-                SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
-                       ST_Y(ST_Centroid(cd.geometry)) AS lat,
-                       ST_X(ST_Centroid(cd.geometry)) AS lng,
-                       pop.avg_population AS population,
-                       score.district_score AS district_score
-                FROM commercial_district cd
-                LEFT JOIN LATERAL (
-                    SELECT pt.avg_population
-                    FROM population_timeseries pt
-                    WHERE pt.commercial_district_id = cd.id
-                      AND pt.dimension = 'total' AND pt.slot = 'total'
-                      AND pt.is_deleted = false
-                    ORDER BY pt.year_quarter DESC
-                    LIMIT 1
-                ) pop ON true
-                LEFT JOIN LATERAL (
-                    SELECT AVG(bc.district_score) AS district_score
-                    FROM business_category bc
-                    WHERE bc.commercial_district_id = cd.id
-                      AND bc.is_deleted = false
-                      AND bc.year_quarter = (
-                        SELECT bc2.year_quarter
-                        FROM business_category bc2
-                        WHERE bc2.commercial_district_id = cd.id
-                          AND bc2.is_deleted = false
-                        ORDER BY bc2.year_quarter DESC
+
+    def _compute() -> list[DistrictGeoOut]:
+        where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
+        query_params: dict[str, str] = {}
+        if gu_name:
+            where_clause = where + " AND cd.gu_name = :gu"
+            query_params["gu"] = gu_name
+        else:
+            where_clause = where
+        rows = (
+            db.execute(
+                text(
+                    f"""
+                    SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
+                           ST_Y(ST_Centroid(cd.geometry)) AS lat,
+                           ST_X(ST_Centroid(cd.geometry)) AS lng,
+                           pop.avg_population AS population,
+                           score.district_score AS district_score
+                    FROM commercial_district cd
+                    LEFT JOIN LATERAL (
+                        SELECT pt.avg_population
+                        FROM population_timeseries pt
+                        WHERE pt.commercial_district_id = cd.id
+                          AND pt.dimension = 'total' AND pt.slot = 'total'
+                          AND pt.is_deleted = false
+                        ORDER BY pt.year_quarter DESC
                         LIMIT 1
-                      )
-                ) score ON true
-                WHERE {where}
-                ORDER BY cd.id
-                """
-            ),
-            params,
+                    ) pop ON true
+                    LEFT JOIN LATERAL (
+                        SELECT AVG(bc.district_score) AS district_score
+                        FROM business_category bc
+                        WHERE bc.commercial_district_id = cd.id
+                          AND bc.is_deleted = false
+                          AND bc.year_quarter = (
+                            SELECT bc2.year_quarter
+                            FROM business_category bc2
+                            WHERE bc2.commercial_district_id = cd.id
+                              AND bc2.is_deleted = false
+                            ORDER BY bc2.year_quarter DESC
+                            LIMIT 1
+                          )
+                    ) score ON true
+                    WHERE {where_clause}
+                    ORDER BY cd.id
+                    """
+                ),
+                query_params,
+            )
+            .mappings()
+            .all()
         )
-        .mappings()
-        .all()
-    )
-    result = [DistrictGeoOut(**row) for row in rows]
+        return [DistrictGeoOut(**row) for row in rows]
+
+    result = cached_response("geo", {"gu_name": gu_name}, _compute)
     cached = apply_http_cache(request, response, result, max_age=3600)
     if cached is not None:
         return cached
@@ -132,69 +139,75 @@ def list_district_geojson(
     ST_SimplifyPreserveTopology 로 단순화(≈30m)하고 좌표 정밀도 6자리로 낮춰 용량을 줄인다.
     gu_name 으로 자치구 필터 가능.
     """
-    where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
-    params: dict[str, str] = {}
-    if gu_name:
-        where += " AND cd.gu_name = :gu"
-        params["gu"] = gu_name
-    rows = (
-        db.execute(
-            text(
-                f"""
-                SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
-                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0003), 6) AS geojson,
-                       pop.avg_population AS population,
-                       score.district_score AS district_score
-                FROM commercial_district cd
-                LEFT JOIN LATERAL (
-                    SELECT pt.avg_population
-                    FROM population_timeseries pt
-                    WHERE pt.commercial_district_id = cd.id
-                      AND pt.dimension = 'total' AND pt.slot = 'total'
-                      AND pt.is_deleted = false
-                    ORDER BY pt.year_quarter DESC
-                    LIMIT 1
-                ) pop ON true
-                LEFT JOIN LATERAL (
-                    SELECT AVG(bc.district_score) AS district_score
-                    FROM business_category bc
-                    WHERE bc.commercial_district_id = cd.id
-                      AND bc.is_deleted = false
-                      AND bc.year_quarter = (
-                        SELECT bc2.year_quarter
-                        FROM business_category bc2
-                        WHERE bc2.commercial_district_id = cd.id
-                          AND bc2.is_deleted = false
-                        ORDER BY bc2.year_quarter DESC
+
+    def _compute() -> dict:
+        where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
+        query_params: dict[str, str] = {}
+        if gu_name:
+            where_clause = where + " AND cd.gu_name = :gu"
+            query_params["gu"] = gu_name
+        else:
+            where_clause = where
+        rows = (
+            db.execute(
+                text(
+                    f"""
+                    SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
+                           ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0003), 6) AS geojson,
+                           pop.avg_population AS population,
+                           score.district_score AS district_score
+                    FROM commercial_district cd
+                    LEFT JOIN LATERAL (
+                        SELECT pt.avg_population
+                        FROM population_timeseries pt
+                        WHERE pt.commercial_district_id = cd.id
+                          AND pt.dimension = 'total' AND pt.slot = 'total'
+                          AND pt.is_deleted = false
+                        ORDER BY pt.year_quarter DESC
                         LIMIT 1
-                      )
-                ) score ON true
-                WHERE {where}
-                ORDER BY cd.id
-                """
-            ),
-            params,
+                    ) pop ON true
+                    LEFT JOIN LATERAL (
+                        SELECT AVG(bc.district_score) AS district_score
+                        FROM business_category bc
+                        WHERE bc.commercial_district_id = cd.id
+                          AND bc.is_deleted = false
+                          AND bc.year_quarter = (
+                            SELECT bc2.year_quarter
+                            FROM business_category bc2
+                            WHERE bc2.commercial_district_id = cd.id
+                              AND bc2.is_deleted = false
+                            ORDER BY bc2.year_quarter DESC
+                            LIMIT 1
+                          )
+                    ) score ON true
+                    WHERE {where_clause}
+                    ORDER BY cd.id
+                    """
+                ),
+                query_params,
+            )
+            .mappings()
+            .all()
         )
-        .mappings()
-        .all()
-    )
-    features = [
-        {
-            "type": "Feature",
-            "geometry": json.loads(r["geojson"]),
-            "properties": {
-                "id": r["id"],
-                "district_name": r["district_name"],
-                "type_name": r["type_name"],
-                "gu_name": r["gu_name"],
-                "population": r["population"],
-                "district_score": r["district_score"],
-            },
-        }
-        for r in rows
-        if r["geojson"]
-    ]
-    payload = {"type": "FeatureCollection", "features": features}
+        features = [
+            {
+                "type": "Feature",
+                "geometry": json.loads(r["geojson"]),
+                "properties": {
+                    "id": r["id"],
+                    "district_name": r["district_name"],
+                    "type_name": r["type_name"],
+                    "gu_name": r["gu_name"],
+                    "population": r["population"],
+                    "district_score": r["district_score"],
+                },
+            }
+            for r in rows
+            if r["geojson"]
+        ]
+        return {"type": "FeatureCollection", "features": features}
+
+    payload = cached_response("geojson", {"gu_name": gu_name}, _compute)
     cached = apply_http_cache(request, response, payload, max_age=3600)
     if cached is not None:
         return cached
@@ -294,58 +307,68 @@ def get_commercial_district(
     redis_client: Redis = Depends(get_redis),
 ):
     """상권 기본 정보 + business_category 최신 분기 전체 업종 집계 (종합점수 순위 포함)."""
-    district = (
-        db.query(CommercialDistrict)
-        .filter(
-            CommercialDistrict.id == district_id,
-            CommercialDistrict.is_deleted == False,  # noqa: E712
-        )
-        .first()
-    )
-    if district is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
 
-    latest_quarter = _latest_business_quarter(db, district_id)
-
-    latest_stats = None
-    if latest_quarter is not None:
-        district_score, survival_rate, closure_rate, total_business = (
-            db.query(
-                func.avg(BusinessCategory.district_score),
-                func.avg(BusinessCategory.survival_rate),
-                func.avg(BusinessCategory.closure_rate),
-                func.sum(BusinessCategory.total_business),
-            )
+    def _compute() -> CommercialDistrictDetailOut:
+        district = (
+            db.query(CommercialDistrict)
             .filter(
-                BusinessCategory.commercial_district_id == district_id,
-                BusinessCategory.year_quarter == latest_quarter,
-                BusinessCategory.is_deleted == False,  # noqa: E712
+                CommercialDistrict.id == district_id,
+                CommercialDistrict.is_deleted == False,  # noqa: E712
             )
             .first()
         )
-        latest_stats = LatestStatsOut(
-            year_quarter=latest_quarter,
-            district_score=district_score,
-            survival_rate=survival_rate,
-            closure_rate=closure_rate,
-            total_business=total_business,
-        )
-        # 종합점수 순위 주입 (rank_scope 모집단 기준). 무거운 전체 집계는 Redis 캐시.
-        rank = ranking_service.get_district_rank(
-            db, redis_client, district_id, scope=rank_scope
-        )
-        if rank is not None:
-            latest_stats.score_rank = rank["score_rank"]
-            latest_stats.score_rank_total = rank["score_rank_total"]
-            latest_stats.score_percentile = rank["score_percentile"]
-            latest_stats.rank_scope = rank["rank_scope"]
+        if district is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
 
-    return CommercialDistrictDetailOut(
-        id=district.id,
-        district_name=district.district_name,
-        type_name=district.type_name,
-        gu_name=district.gu_name,
-        dong_name=district.dong_name,
-        avg_population=district.avg_population,
-        latest_stats=latest_stats,
+        latest_quarter = _latest_business_quarter(db, district_id)
+
+        latest_stats = None
+        if latest_quarter is not None:
+            district_score, survival_rate, closure_rate, total_business = (
+                db.query(
+                    func.avg(BusinessCategory.district_score),
+                    func.avg(BusinessCategory.survival_rate),
+                    func.avg(BusinessCategory.closure_rate),
+                    func.sum(BusinessCategory.total_business),
+                )
+                .filter(
+                    BusinessCategory.commercial_district_id == district_id,
+                    BusinessCategory.year_quarter == latest_quarter,
+                    BusinessCategory.is_deleted == False,  # noqa: E712
+                )
+                .first()
+            )
+            latest_stats = LatestStatsOut(
+                year_quarter=latest_quarter,
+                district_score=district_score,
+                survival_rate=survival_rate,
+                closure_rate=closure_rate,
+                total_business=total_business,
+            )
+            # 종합점수 순위 주입 (rank_scope 모집단 기준). 무거운 전체 집계는 Redis 캐시.
+            rank = ranking_service.get_district_rank(
+                db, redis_client, district_id, scope=rank_scope
+            )
+            if rank is not None:
+                latest_stats.score_rank = rank["score_rank"]
+                latest_stats.score_rank_total = rank["score_rank_total"]
+                latest_stats.score_percentile = rank["score_percentile"]
+                latest_stats.rank_scope = rank["rank_scope"]
+
+        return CommercialDistrictDetailOut(
+            id=district.id,
+            district_name=district.district_name,
+            type_name=district.type_name,
+            gu_name=district.gu_name,
+            dong_name=district.dong_name,
+            avg_population=district.avg_population,
+            latest_stats=latest_stats,
+        )
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    # rank_scope에 따라 순위가 달라지므로 캐시 키에 rank_scope를 포함한다.
+    return cached_response(
+        "district-detail",
+        {"district_id": district_id, "rank_scope": rank_scope},
+        _compute,
     )
