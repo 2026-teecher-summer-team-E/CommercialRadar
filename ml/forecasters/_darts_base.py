@@ -36,9 +36,15 @@ class GlobalForecaster(Forecaster):
 
     group_cols: list[str] = ["commercial_district_id"]
     value_col: str
+    # TFT는 input_chunk_length(4)+output_chunk_length(4)=8분기 이상이어야 학습된다.
+    # 이보다 짧은 시리즈는 fit에서 제외한다. chunk 길이를 바꾸면 이 값도 맞춘다.
+    min_series_length: int = 8
+    # None이면 전체 상권. 특정 상권 리스트를 주면 그 상권만 학습·예측(예: 강남역).
+    district_ids: list[int] | None = None
 
     def __init__(self) -> None:
         self.model = None
+        self.scaler = None          # 시리즈별 정규화 (fit 시 생성, predict 시 역변환)
         self._series: list | None = None
         self._keys: list[tuple] | None = None
 
@@ -67,7 +73,9 @@ class GlobalForecaster(Forecaster):
     def fit(self) -> None:
         engine = loaders.get_engine()
         df = self._load_frame(engine)
-        series, keys = loaders.to_timeseries_list(df, self.group_cols, self.value_col)
+        series, keys = loaders.to_timeseries_list(
+            df, self.group_cols, self.value_col, min_length=self.min_series_length
+        )
         if not series:
             raise RuntimeError(f"{self.name}: 학습할 시계열이 없습니다 (데이터 부족).")
 
@@ -79,9 +87,16 @@ class GlobalForecaster(Forecaster):
             )
 
         self.model = self._build_model()
+        # 업종/상권마다 매출 규모가 4자리수 이상 차이 → 정규화 없이 글로벌 학습하면
+        # 큰 규모 시리즈에 눌려 작은 값으로 붕괴한다. Scaler로 시리즈별 [0,1] 정규화
+        # 후 학습하고, predict에서 역변환한다.
+        from darts.dataprocessing.transformers import Scaler
+
+        self.scaler = Scaler()
+        series_scaled = self.scaler.fit_transform(series)
         # 글로벌 학습: 여러 시리즈를 한 모델에 학습
-        self.model.fit(series)  # TODO: past/future covariates·static covariates 추가
-        self._series, self._keys = series, keys
+        self.model.fit(series_scaled)  # TODO: past/future covariates·static covariates 추가
+        self._series, self._keys = series_scaled, keys
         logger.info("%s 학습 완료: 시리즈 %d개 (최장 %d분기)", self.name, len(series), max_len)
 
     def predict(self, horizon: int) -> list[PredictionRow]:
@@ -95,10 +110,18 @@ class GlobalForecaster(Forecaster):
         )
         if not isinstance(forecasts, list):
             forecasts = [forecasts]
+        # 예측은 스케일 공간 → 실제 규모로 역변환 (fit 때와 같은 시리즈 순서라 위치 정렬됨).
+        if self.scaler is not None:
+            forecasts = self.scaler.inverse_transform(forecasts)
+            if not isinstance(forecasts, list):
+                forecasts = [forecasts]
 
         rows: list[PredictionRow] = []
         for key, fc in zip(self._keys, forecasts):
             district_id = int(key[0])
+            # group_cols에 category_name이 있으면 key=(cd_id, category) 2-튜플.
+            # 없으면(상권 단위) __ALL__ = 전체 합산으로 표기.
+            category_name = str(key[1]) if len(key) > 1 else "__ALL__"
             values = fc.all_values()  # shape (n_time, n_comp, n_samples)
             for i, ts_point in enumerate(fc.time_index):
                 samples = np.asarray(values[i, 0, :], dtype=float)
@@ -107,6 +130,7 @@ class GlobalForecaster(Forecaster):
                 low, mid, high = (float(q) for q in np.percentile(samples, [10, 50, 90]))
                 rows.append(PredictionRow(
                     commercial_district_id=district_id,
+                    category_name=category_name,
                     prediction_type=self.prediction_type,
                     target_quarter=loaders.timestamp_to_year_quarter(ts_point),
                     predicted_value=self._predicted_value(low, mid, high),
@@ -134,11 +158,26 @@ class GlobalForecaster(Forecaster):
             raise RuntimeError(f"{self.name}: 저장할 모델이 없습니다. fit() 먼저.")
         model_dir.mkdir(parents=True, exist_ok=True)
         self.model.save(str(model_dir / "model.pt"))
+        if self.scaler is not None:
+            import pickle
+
+            with open(model_dir / "scaler.pkl", "wb") as f:
+                pickle.dump(self.scaler, f)
         logger.info("%s 모델 저장: %s", self.name, model_dir / "model.pt")
 
     def load(self, model_dir: Path) -> None:
         self.model = self._model_class().load(str(model_dir / "model.pt"))
+        scaler_path = model_dir / "scaler.pkl"
+        if scaler_path.exists():
+            import pickle
+
+            with open(scaler_path, "rb") as f:
+                self.scaler = pickle.load(f)
         # darts predict는 예측 기준 시리즈가 필요 → 학습 소스 재로딩
         engine = loaders.get_engine()
         df = self._load_frame(engine)
-        self._series, self._keys = loaders.to_timeseries_list(df, self.group_cols, self.value_col)
+        series, self._keys = loaders.to_timeseries_list(
+            df, self.group_cols, self.value_col, min_length=self.min_series_length
+        )
+        # predict가 스케일 공간 시리즈를 모델에 넣으므로 학습 때와 동일 스케일 적용.
+        self._series = self.scaler.transform(series) if self.scaler is not None else series
