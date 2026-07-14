@@ -20,6 +20,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 CSV=""
+CSV_SEEN=0   # CSV 인자 존재 여부를 값과 분리 추적(빈 문자열 인자도 정확히 판별).
 COMPOSE_FILE="${COMPOSE_FILE:-docker-compose.yml}"
 
 for arg in "$@"; do
@@ -28,16 +29,17 @@ for arg in "$@"; do
     --local) COMPOSE_FILE="docker-compose.yml" ;;
     -*) echo "알 수 없는 옵션: $arg" >&2; exit 2 ;;
     *)
-      if [ -n "$CSV" ]; then
+      if [ "$CSV_SEEN" -eq 1 ]; then
         echo "CSV 경로는 하나만 지정할 수 있습니다: '$CSV', '$arg'" >&2
         exit 2
       fi
       CSV="$arg"
+      CSV_SEEN=1
       ;;
   esac
 done
 
-if [ -z "$CSV" ]; then
+if [ "$CSV_SEEN" -eq 0 ]; then
   echo "사용법: $0 <csv경로> [--prod]" >&2
   exit 2
 fi
@@ -47,8 +49,14 @@ if [ ! -f "$CSV" ]; then
 fi
 
 BASENAME="$(basename "$CSV")"
-# 호출별 고유 경로($$=PID)로 동시 실행 시 컨테이너 임시 파일이 서로 덮이지 않게 한다.
-DEST="/tmp/load-predictions.$$.${BASENAME}"
+# 컨테이너 안에서 mktemp로 예측 불가능한 고유 임시 경로를 원자적으로 생성한다.
+# ($$/PID 기반 예측 가능 경로의 심링크·레이스 위험 회피, CWE-377. 동시 실행 격리도 유지.)
+DEST="$(docker compose -f "${COMPOSE_FILE}" exec -T backend \
+  mktemp /tmp/load-predictions.XXXXXXXX | tr -d '\r')"
+if [ -z "$DEST" ]; then
+  echo "[load-predictions] 컨테이너 임시파일 생성 실패(backend 미기동?)" >&2
+  exit 1
+fi
 
 # 적재 후(성공·실패 무관) 컨테이너 임시 파일을 제거한다.
 cleanup() {
