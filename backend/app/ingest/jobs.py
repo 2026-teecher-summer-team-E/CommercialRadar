@@ -22,6 +22,7 @@ from datetime import date, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
+from app.core.response_cache import invalidate_all
 from app.database import SessionLocal
 from app.ingest.clients.seoul_client import SeoulClient
 from app.ingest.clients.reb_client import RebClient, STATBL_FLOOR_TYPE
@@ -635,6 +636,7 @@ def run_targets(targets: list[str]) -> dict[str, str]:
     """
     selected = list(JOBS) if targets == ["all"] else targets
     results: dict[str, str] = {}
+    any_success = False
     for name in selected:
         job = JOBS.get(name)
         if job is None:
@@ -643,6 +645,13 @@ def run_targets(targets: list[str]) -> dict[str, str]:
         try:
             run = job()
             results[name] = f"{run.status}(upserted={run.upserted_count})"
+            any_success = any_success or run.status == "success"
         except Exception as exc:  # 한 소스 실패가 다른 소스를 막지 않게
             results[name] = f"failed({exc})"
+
+    # 응답 캐시(geo/geojson/compare/ranking/상세/category-stats/time-series)는
+    # 인제스천 데이터가 바뀌어야 갱신할 이유가 있다 — 하나라도 성공했으면 무효화한다.
+    if any_success:
+        invalidate_all()
+
     return results

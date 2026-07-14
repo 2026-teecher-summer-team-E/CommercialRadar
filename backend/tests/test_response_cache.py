@@ -1,0 +1,114 @@
+"""app.core.response_cache 단위 테스트.
+
+실제 Redis 없이(CI엔 Redis 서비스가 없다) 인메모리 페이크로 get/setex/scan_iter/delete를
+흉내 내어 캐시 히트/미스, TTL 저장, 무효화, Redis 장애 시 폴백을 검증한다.
+"""
+
+import fnmatch
+
+import pytest
+from redis.exceptions import ConnectionError as RedisConnectionError
+
+from app.core import response_cache
+from app.core.response_cache import cached_response, invalidate_all
+
+
+class FakeRedis:
+    def __init__(self):
+        self.store: dict[str, str] = {}
+        self.ttls: dict[str, int] = {}
+        self.broken = False
+
+    def get(self, key):
+        if self.broken:
+            raise RedisConnectionError("fake down")
+        return self.store.get(key)
+
+    def setex(self, key, ttl, value):
+        if self.broken:
+            raise RedisConnectionError("fake down")
+        self.store[key] = value
+        self.ttls[key] = ttl
+
+    def scan_iter(self, match: str):
+        for key in list(self.store.keys()):
+            if fnmatch.fnmatch(key, match):
+                yield key
+
+    def delete(self, *keys):
+        for key in keys:
+            self.store.pop(key, None)
+            self.ttls.pop(key, None)
+
+
+@pytest.fixture
+def fake_redis(monkeypatch):
+    client = FakeRedis()
+    monkeypatch.setattr(response_cache, "get_redis_client", lambda: client)
+    return client
+
+
+def test_cache_miss_then_hit_skips_compute(fake_redis):
+    calls = {"n": 0}
+
+    def compute():
+        calls["n"] += 1
+        return {"value": 42}
+
+    first = cached_response("geo", {"gu_name": "강남구"}, compute)
+    second = cached_response("geo", {"gu_name": "강남구"}, compute)
+
+    assert first == {"value": 42}
+    assert second == {"value": 42}
+    assert calls["n"] == 1  # 두 번째 호출은 캐시 히트라 compute()가 다시 불리지 않는다.
+
+
+def test_different_params_are_different_cache_keys(fake_redis):
+    calls = {"n": 0}
+
+    def compute():
+        calls["n"] += 1
+        return {"n": calls["n"]}
+
+    cached_response("geo", {"gu_name": "강남구"}, compute)
+    cached_response("geo", {"gu_name": "서초구"}, compute)
+
+    assert calls["n"] == 2
+
+
+def test_setex_uses_given_ttl(fake_redis):
+    cached_response("district-detail", {"district_id": 1}, lambda: {"ok": True}, ttl=123)
+    key = next(iter(fake_redis.store))
+    assert fake_redis.ttls[key] == 123
+
+
+def test_invalidate_all_clears_only_resp_cache_keys(fake_redis):
+    cached_response("geo", {}, lambda: {"a": 1})
+    cached_response("compare", {"district_ids": "1,2"}, lambda: {"b": 2})
+    fake_redis.store["unrelated:key"] = "keep-me"
+
+    deleted = invalidate_all()
+
+    assert deleted == 2
+    assert fake_redis.store == {"unrelated:key": "keep-me"}
+
+
+def test_redis_read_failure_falls_back_to_compute(fake_redis):
+    fake_redis.broken = True
+    calls = {"n": 0}
+
+    def compute():
+        calls["n"] += 1
+        return {"n": calls["n"]}
+
+    first = cached_response("geo", {}, compute)
+    second = cached_response("geo", {}, compute)
+
+    assert first == {"n": 1}
+    assert second == {"n": 2}  # 캐시가 죽어있으니 매번 다시 계산된다.
+    assert fake_redis.store == {}  # 저장도 실패하지만 응답 자체는 정상.
+
+
+def test_invalidate_all_swallows_redis_failure(fake_redis):
+    fake_redis.broken = True
+    assert invalidate_all() == 0

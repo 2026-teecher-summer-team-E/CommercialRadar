@@ -17,10 +17,24 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user, get_db
+from app.core.response_cache import invalidate_all
 from app.database import engine
 from app.main import app
 from app.models.commercial_district import CommercialDistrict
 from app.models.users import User
+
+
+@pytest.fixture(autouse=True)
+def _clear_response_cache():
+    """각 테스트 전후로 응답 캐시(resp_cache:*)를 비운다.
+
+    DB는 트랜잭션 롤백으로 격리되지만 응답 캐시는 외부 Redis라 격리되지 않는다.
+    로컬처럼 실제 Redis가 붙어있는 환경에서 테스트가 만든 캐시 항목이 다른 테스트나
+    실제 개발용 캐시를 오염시키지 않도록 정리한다(Redis 없는 CI에서도 no-op으로 안전).
+    """
+    invalidate_all()
+    yield
+    invalidate_all()
 
 
 @pytest.fixture
