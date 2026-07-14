@@ -21,7 +21,13 @@ class SurvivalForecaster(GlobalForecaster):
     value_col = "survival_rate"
 
     def _load_frame(self, engine):
-        return loaders.load_business_frame(engine)
+        df = loaders.load_business_frame(engine, district_ids=self.district_ids)
+        # business_category.survival_rate는 0~100 백분율이다. API/스키마 계약(ml.py:
+        # survival_rate=0~1 비율, analysis.py도 /100)에 맞춰 0~1로 정규화해 학습한다.
+        # (안 하면 모델이 ~97을 예측하고 _predicted_value의 [0,1] clip이 전부 1.0으로 깎는다.)
+        df = df.copy()
+        df["survival_rate"] = df["survival_rate"] / 100.0
+        return df
 
     def _build_model(self):
         from darts.models import TFTModel
@@ -42,6 +48,9 @@ class SurvivalForecaster(GlobalForecaster):
                 "enable_progress_bar": False,
             },
             random_state=42,
+            # TFT는 future covariates가 필수 — 실제 공변량이 없으므로 시간 인덱스
+            # 상대위치를 자동 생성(add_relative_index)해 요구를 충족한다.
+            add_relative_index=True,
             # TODO: past_covariates(closure_rate/open_rate/total_business/유동인구),
             #       static_covariates(상권 type_name/gu_name)
         )

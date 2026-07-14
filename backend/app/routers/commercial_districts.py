@@ -1,13 +1,19 @@
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from geoalchemy2 import Geography
 from geoalchemy2.functions import ST_Distance, ST_DWithin, ST_MakePoint
+from redis import Redis
 from sqlalchemy import cast
 from sqlalchemy.orm import Session
 
-from app.core.deps import get_db
+from app.core.deps import get_db, get_redis
 from app.core.response_cache import cached_response
 from app.models.commercial_district import CommercialDistrict
-from app.schemas.commercial import DistrictCompareResponse, NearbyDistrictOut
+from app.schemas.commercial import (
+    DistrictCompareResponse,
+    DistrictRankingItem,
+    NearbyDistrictOut,
+)
+from app.services import ranking_service
 from app.services.commercial_service import CommercialService
 
 router = APIRouter(tags=["commercial-districts"])
@@ -35,6 +41,28 @@ def _parse_district_ids(raw: str) -> list[int]:
         )
 
     return ids
+
+
+@router.get("/commercial-districts/ranking", response_model=list[DistrictRankingItem])
+def get_district_ranking(
+    scope: str = Query("seoul", pattern="^(seoul|gu|type)$", description="순위 모집단"),
+    gu_name: str | None = Query(None, description="scope=gu일 때 필수"),
+    type_name: str | None = Query(None, description="scope=type일 때 필수"),
+    sort: str = Query("score", pattern="^(score|survival|population)$"),
+    limit: int | None = Query(None, ge=1, le=2000),
+    offset: int = Query(0, ge=0),
+    db: Session = Depends(get_db),
+    redis_client: Redis = Depends(get_redis),
+):
+    """상권 종합점수(district_score) 순위. scope로 모집단(서울/자치구/상권유형)을 고른다."""
+    if scope == "gu" and not gu_name:
+        raise HTTPException(status_code=400, detail="scope=gu는 gu_name이 필요합니다.")
+    if scope == "type" and not type_name:
+        raise HTTPException(status_code=400, detail="scope=type은 type_name이 필요합니다.")
+    return ranking_service.get_ranking(
+        db, redis_client, scope=scope, gu_name=gu_name, type_name=type_name,
+        sort=sort, limit=limit, offset=offset,
+    )
 
 
 @router.get("/commercial-districts/compare", response_model=DistrictCompareResponse)
