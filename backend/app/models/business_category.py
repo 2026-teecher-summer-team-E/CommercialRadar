@@ -1,4 +1,4 @@
-from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Integer, String, Time, UniqueConstraint
+from sqlalchemy import BigInteger, Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, Time, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.sql import func
 
@@ -14,6 +14,9 @@ class BusinessCategory(Base):
             "commercial_district_id", "category_name", "year_quarter",
             name="uq_biz_cat_cd_name_yq",
         ),
+        # 분기 필터 집계(예: buzz-gap의 분기별 상권 매출 합)용. 유니크 인덱스는
+        # year_quarter가 3번째 컬럼이라 WHERE year_quarter=X 에 못 쓰여 풀스캔이 발생 → 별도 인덱스.
+        Index("ix_biz_cat_yq_cd", "year_quarter", "commercial_district_id"),
     )
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
