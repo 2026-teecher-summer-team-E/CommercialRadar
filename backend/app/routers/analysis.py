@@ -453,4 +453,8 @@ def get_per_capita_sales(
     db: Session = Depends(get_db),
 ):
     _get_existing_district_id(db, district_id)
-    return AnalysisService.get_per_capita_sales(db, district_id=district_id)
+    return cached_response(
+        "per-capita-sales",
+        {"district_id": district_id},
+        lambda: AnalysisService.get_per_capita_sales(db, district_id=district_id),
+    )
