@@ -452,5 +452,9 @@ def get_per_capita_sales(
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
     db: Session = Depends(get_db),
 ):
-    _get_existing_district_id(db, district_id)
-    return AnalysisService.get_per_capita_sales(db, district_id=district_id)
+    def _compute():
+        _get_existing_district_id(db, district_id)
+        return AnalysisService.get_per_capita_sales(db, district_id=district_id)
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response("per-capita-sales", {"district_id": district_id}, _compute)
