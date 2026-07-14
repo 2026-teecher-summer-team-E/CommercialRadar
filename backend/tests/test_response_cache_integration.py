@@ -85,6 +85,35 @@ def test_district_detail_second_request_is_cached(client, db, fake_redis):
     assert second.json() == first.json()
 
 
+def test_radar_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-RADAR")
+    db.add(
+        BusinessCategory(
+            commercial_district_id=district.id,
+            category_name="한식",
+            year_quarter="2024-Q4",
+            survival_rate=80,
+            closure_rate=5,
+            open_rate=10,
+            total_business=10,
+            total_sales=1000,
+        )
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/radar")
+    assert first.status_code == 200
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/radar")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
 def test_compare_second_request_is_cached(client, db, fake_redis):
     d1 = _make_district(db, external_code="TEST-RESPCACHE-2A")
     d2 = _make_district(db, external_code="TEST-RESPCACHE-2B")
