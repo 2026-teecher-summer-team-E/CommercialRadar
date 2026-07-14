@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.core.caching import apply_http_cache
 from app.core.deps import get_db
+from app.core.response_cache import cached_response
 from app.models.commercial_district import CommercialDistrict
 from app.models.rent_stats import RentStat
 from app.schemas.analysis import (
@@ -228,13 +229,24 @@ def get_district_time_series(
     from_quarter = _validate_quarter(from_quarter, "from_quarter")
     to_quarter = _validate_quarter(to_quarter, "to_quarter")
 
-    return AnalysisService.get_time_series(
-        db,
-        district_id=district_id,
-        metrics=metrics_list,
-        breakdown=breakdown_list,
-        from_quarter=from_quarter,
-        to_quarter=to_quarter,
+    cache_params = {
+        "district_id": district_id,
+        "metrics": ",".join(metrics_list),
+        "breakdown": ",".join(breakdown_list),
+        "from_quarter": from_quarter,
+        "to_quarter": to_quarter,
+    }
+    return cached_response(
+        "time-series",
+        cache_params,
+        lambda: AnalysisService.get_time_series(
+            db,
+            district_id=district_id,
+            metrics=metrics_list,
+            breakdown=breakdown_list,
+            from_quarter=from_quarter,
+            to_quarter=to_quarter,
+        ),
     )
 
 
@@ -272,13 +284,24 @@ def get_district_category_stats(
 
     year_quarter = _validate_quarter(year_quarter, "year_quarter")
     fields_list = _parse_allowed_csv(fields, ALLOWED_CATEGORY_STAT_FIELDS, "fields")
+    fields_set = set(fields_list) or ALLOWED_CATEGORY_STAT_FIELDS
 
-    return AnalysisService.get_category_stats(
-        db,
-        district_id=district_id,
-        year_quarter=year_quarter,
-        category_name=category_name,
-        fields=set(fields_list) or ALLOWED_CATEGORY_STAT_FIELDS,
+    cache_params = {
+        "district_id": district_id,
+        "year_quarter": year_quarter,
+        "category_name": category_name,
+        "fields": ",".join(sorted(fields_set)),
+    }
+    return cached_response(
+        "category-stats",
+        cache_params,
+        lambda: AnalysisService.get_category_stats(
+            db,
+            district_id=district_id,
+            year_quarter=year_quarter,
+            category_name=category_name,
+            fields=fields_set,
+        ),
     )
 
 
@@ -313,11 +336,16 @@ def get_category_ranking(
     _get_existing_district_id(db, district_id)
     year_quarter = _validate_quarter(year_quarter, "year_quarter")
 
-    result = AnalysisService.get_category_ranking(
-        db,
-        district_id=district_id,
-        year_quarter=year_quarter,
-        limit=limit,
+    cache_params = {"district_id": district_id, "year_quarter": year_quarter, "limit": limit}
+    result = cached_response(
+        "category-ranking",
+        cache_params,
+        lambda: AnalysisService.get_category_ranking(
+            db,
+            district_id=district_id,
+            year_quarter=year_quarter,
+            limit=limit,
+        ),
     )
     cached = apply_http_cache(request, response, result, max_age=300)
     if cached is not None:
