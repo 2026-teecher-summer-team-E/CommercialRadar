@@ -32,8 +32,18 @@ from app.ingest.clients.naver_datalab_client import (
     build_keywords,
     fetch_buzz_batched,
 )
+from app.ingest.clients.naver_category_client import (
+    CATEGORY_ANCHOR,
+    fetch_category_trend_batched,
+    fetch_category_trend_batched_with_anchor,
+)
 from app.ingest.transformers.buzz_transformer import transform_batched_responses
+from app.ingest.transformers.category_trend_transformer import (
+    transform_batched_category_responses,
+    transform_batched_category_responses_with_anchor,
+)
 from app.ingest.loaders.buzz_loader import upsert_all as upsert_buzz
+from app.ingest.loaders.category_trend_loader import upsert_all as upsert_category_trend
 from app.ingest.loaders import commercial_loader, population_loader, business_loader
 from app.ingest.loaders import foreign_loader, rent_loader, population_timeseries_loader
 from app.ingest.loaders.resolver import (
@@ -45,6 +55,7 @@ from app.ingest.transformers import (
     business_transformer,
 )
 from app.ingest.transformers import foreign_transformer, rent_transformer
+from app.models.business_category import BusinessCategory
 from app.models.ingestion_run import IngestionRun
 
 logger = logging.getLogger(__name__)
@@ -613,6 +624,93 @@ def ingest_buzz(db: Session | None = None) -> IngestionRun:
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# Job 7: 네이버 데이터랩 category_search_trend
+# ──────────────────────────────────────────────────────────────────────────────
+
+def ingest_category_trend(db: Session | None = None) -> IngestionRun:
+    """네이버 데이터랩 검색어 트렌드(업종명 키워드) → category_search_trend 적재.
+
+    business_category 최신 분기 기준 distinct 업종명 전체를 대상으로 두 가지를 수집한다:
+
+    1. 앵커 없는 배치(5개씩) — rising/sinking 판정용. 업종 자기 자신의 구간별
+       평균 변화율(%)로 계산하므로 배치마다 다른 정규화 스케일이 결과에
+       영향을 주지 않아 앵커가 필요 없다.
+    2. 앵커(CATEGORY_ANCHOR) 포함 배치 — "많이 검색된 업종" 절대값 비교용.
+       배치 간 스케일을 앵커 대비로 재정규화해 별도 source(CATEGORY_POPULARITY_SOURCE)로
+       저장한다(rising/sinking용 데이터와 섞이면 앵커 자체의 변동이 섞여 왜곡된다).
+
+    seoul_business 선행 완료 필요.
+    """
+    owns_session = db is None
+    db = db or SessionLocal()
+    source = "category_trend"
+    run: IngestionRun | None = None
+
+    try:
+        run = _start_run(db, source)
+
+        latest_quarter = (
+            db.query(func.max(BusinessCategory.year_quarter))
+            .filter(BusinessCategory.is_deleted.is_(False))
+            .scalar()
+        )
+        category_names: list[str] = []
+        if latest_quarter is not None:
+            category_names = [
+                row[0]
+                for row in (
+                    db.query(BusinessCategory.category_name)
+                    .filter(
+                        BusinessCategory.year_quarter == latest_quarter,
+                        BusinessCategory.is_deleted.is_(False),
+                        BusinessCategory.category_name.isnot(None),
+                    )
+                    .distinct()
+                    .all()
+                )
+            ]
+
+        responses = fetch_category_trend_batched(category_names, months=6)
+        rows = transform_batched_category_responses(responses)
+        upserted = upsert_category_trend(db, rows)
+        fetched = sum(len(r.get("results", [])) for r in responses)
+
+        anchor_responses = fetch_category_trend_batched_with_anchor(category_names, months=6)
+        anchor_rows = transform_batched_category_responses_with_anchor(anchor_responses, CATEGORY_ANCHOR)
+        upserted += upsert_category_trend(db, anchor_rows)
+        fetched += sum(len(r.get("results", [])) for r in anchor_responses)
+
+        run.status = "success"
+        run.fetched_count = fetched
+        run.upserted_count = upserted
+        run.failed_count = 0
+        run.finished_at = func.now()
+        db.commit()
+        logger.info(
+            "인제스천 완료 [%s]: fetched=%d upserted=%d",
+            source, fetched, upserted,
+        )
+        return run
+
+    except Exception as exc:
+        db.rollback()
+        if run is not None:
+            fetched = len(rows) if "rows" in locals() else 0
+            run.status = "failed"
+            run.error_message = str(exc)[:2000]
+            run.fetched_count = fetched
+            run.upserted_count = 0
+            run.failed_count = fetched
+            run.finished_at = func.now()
+            db.commit()
+        logger.exception("인제스천 실패 [%s]", source)
+        raise
+    finally:
+        if owns_session:
+            db.close()
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 디스패치 테이블
 # ──────────────────────────────────────────────────────────────────────────────
 
@@ -625,6 +723,7 @@ JOBS = {
     "seoul_foreign":    ingest_seoul_foreign,   # commercial_district.adstrd_code 선행 필요
     "seoul_rent":       ingest_seoul_rent,      # commercial_district.district_name 이름매칭 선행 필요
     "buzz":             ingest_buzz,
+    "category_trend":   ingest_category_trend,
 }
 
 
