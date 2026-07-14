@@ -241,62 +241,67 @@ def get_sales_time_bands(district_id: int, db: Session = Depends(get_db)):
     낮 = 06_11 + 11_14 + 14_17, 밤 = 17_21 + 21_24 + 00_06 (17시 기준).
     재인제스천 전 DB 행엔 time_band_sales가 없어, 밴드 데이터가 없으면 값을 null로 반환한다.
     """
-    # 존재하지 않는 district는 404 ("데이터 없는 유효 district"와 구분).
-    district_exists = (
-        db.query(CommercialDistrict.id)
-        .filter(
-            CommercialDistrict.id == district_id,
-            CommercialDistrict.is_deleted == False,  # noqa: E712
+
+    def _compute():
+        # 존재하지 않는 district는 404 ("데이터 없는 유효 district"와 구분).
+        district_exists = (
+            db.query(CommercialDistrict.id)
+            .filter(
+                CommercialDistrict.id == district_id,
+                CommercialDistrict.is_deleted == False,  # noqa: E712
+            )
+            .first()
         )
-        .first()
-    )
-    if district_exists is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+        if district_exists is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
 
-    latest_quarter = _latest_business_quarter(db, district_id)
-    if latest_quarter is None:
-        return SalesTimeBandsResponse(district_id=district_id)
+        latest_quarter = _latest_business_quarter(db, district_id)
+        if latest_quarter is None:
+            return SalesTimeBandsResponse(district_id=district_id)
 
-    rows = (
-        db.query(BusinessCategory.time_band_sales)
-        .filter(
-            BusinessCategory.commercial_district_id == district_id,
-            BusinessCategory.year_quarter == latest_quarter,
-            BusinessCategory.is_deleted == False,  # noqa: E712
-            BusinessCategory.time_band_sales.isnot(None),
+        rows = (
+            db.query(BusinessCategory.time_band_sales)
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == latest_quarter,
+                BusinessCategory.is_deleted == False,  # noqa: E712
+                BusinessCategory.time_band_sales.isnot(None),
+            )
+            .all()
         )
-        .all()
-    )
 
-    band_totals: dict[str, float] = {}
-    for (bands,) in rows:
-        if not isinstance(bands, dict):
-            continue
-        for key, val in bands.items():
-            if val is None:
+        band_totals: dict[str, float] = {}
+        for (bands,) in rows:
+            if not isinstance(bands, dict):
                 continue
-            band_totals[key] = band_totals.get(key, 0.0) + float(val)
+            for key, val in bands.items():
+                if val is None:
+                    continue
+                band_totals[key] = band_totals.get(key, 0.0) + float(val)
 
-    # 재인제스천 전이라 밴드 데이터가 전혀 없으면 값 없이 반환.
-    if not band_totals:
-        return SalesTimeBandsResponse(district_id=district_id, year_quarter=latest_quarter)
+        # 재인제스천 전이라 밴드 데이터가 전혀 없으면 값 없이 반환.
+        if not band_totals:
+            return SalesTimeBandsResponse(district_id=district_id, year_quarter=latest_quarter)
 
-    daytime_sales = sum(band_totals.get(b, 0.0) for b in _DAY_BANDS)
-    nighttime_sales = sum(band_totals.get(b, 0.0) for b in _NIGHT_BANDS)
-    total = daytime_sales + nighttime_sales
+        daytime_sales = sum(band_totals.get(b, 0.0) for b in _DAY_BANDS)
+        nighttime_sales = sum(band_totals.get(b, 0.0) for b in _NIGHT_BANDS)
+        total = daytime_sales + nighttime_sales
 
-    daytime_pct = round(daytime_sales / total * 100, 2) if total > 0 else None
-    nighttime_pct = round(nighttime_sales / total * 100, 2) if total > 0 else None
+        daytime_pct = round(daytime_sales / total * 100, 2) if total > 0 else None
+        nighttime_pct = round(nighttime_sales / total * 100, 2) if total > 0 else None
 
-    return SalesTimeBandsResponse(
-        district_id=district_id,
-        year_quarter=latest_quarter,
-        daytime_sales=daytime_sales,
-        nighttime_sales=nighttime_sales,
-        daytime_pct=daytime_pct,
-        nighttime_pct=nighttime_pct,
-        bands=band_totals,
-    )
+        return SalesTimeBandsResponse(
+            district_id=district_id,
+            year_quarter=latest_quarter,
+            daytime_sales=daytime_sales,
+            nighttime_sales=nighttime_sales,
+            daytime_pct=daytime_pct,
+            nighttime_pct=nighttime_pct,
+            bands=band_totals,
+        )
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response("sales-time-bands", {"district_id": district_id}, _compute)
 
 
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)
