@@ -4,6 +4,10 @@ buzz(인식) − 실제(유동인구/인당매출) 백분위 = gap.
 백분위는 전체 상권 대비 계산. buzz는 월, 실제는 분기 → 월→분기 매핑.
 """
 
+import json
+
+from redis import Redis
+from redis.exceptions import RedisError
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
@@ -11,6 +15,11 @@ from app.models.business_category import BusinessCategory
 from app.models.buzz_stats import BuzzStats
 from app.models.commercial_district import CommercialDistrict
 from app.models.population_timeseries import PopulationTimeseries
+
+# 결과 캐시 TTL. buzz는 월/분기 단위 배치 인제스천이라 이 정도 staleness는 허용한다.
+_CACHE_TTL = 3600  # 1시간
+# items 스키마가 바뀌면 올려서 옛 캐시를 자연 무효화한다.
+_CACHE_VERSION = "v1"
 
 
 def month_to_quarter(period: str) -> str:
@@ -74,17 +83,11 @@ def _foot_for_quarter(db: Session, quarter: str) -> dict:
     )
 
 
-def get_buzz_gap(
-    db: Session,
-    period: str | None = None,
-    source: str = "naver_datalab",
-    sort: str = "spend_gap",
-    limit: int | None = None,
-) -> dict:
-    period = period or _latest_period(db, source)
-    if period is None:
-        return {"period": None, "source": source, "items": []}
+def _compute_items(db: Session, period: str, source: str) -> list[dict]:
+    """(period, source)만으로 결정되는 무거운 집계 — 정렬/limit 이전의 items 리스트.
 
+    이 결과가 Redis 캐시 단위다(정렬·limit은 캐시 히트 후 파이썬에서 적용).
+    """
     quarter = month_to_quarter(period)
 
     # 전체 상권 유동인구(분기 total) — 데이터 없으면 최신 분기로 fallback
@@ -155,9 +158,59 @@ def get_buzz_gap(
             "spend": spend,
         })
 
-    items = compute_gaps(targets, foot_all, spend_all)
+    return compute_gaps(targets, foot_all, spend_all)
+
+
+def _cache_key(source: str, period: str) -> str:
+    return f"buzz-gap:{_CACHE_VERSION}:{source}:{period}"
+
+
+def _items_cached(
+    db: Session, period: str, source: str, redis_client: Redis | None
+) -> list[dict]:
+    """_compute_items 결과를 Redis에 TTL 캐싱한다.
+
+    redis_client가 None이거나 Redis 장애 시 캐시를 건너뛰고 직접 연산으로 폴백한다
+    (캐시는 성능 최적화일 뿐, 없어도 엔드포인트는 동작해야 한다).
+    """
+    if redis_client is None:
+        return _compute_items(db, period, source)
+
+    key = _cache_key(source, period)
+    try:
+        cached = redis_client.get(key)
+        if cached is not None:
+            return json.loads(cached)
+    except RedisError:
+        # 캐시 조회 실패 → Redis가 죽었다고 보고 쓰기도 시도하지 않는다.
+        return _compute_items(db, period, source)
+
+    items = _compute_items(db, period, source)
+    try:
+        redis_client.setex(key, _CACHE_TTL, json.dumps(items, ensure_ascii=False))
+    except RedisError:
+        pass  # 캐시 저장 실패는 무시 — 계산 결과는 그대로 반환한다.
+    return items
+
+
+def get_buzz_gap(
+    db: Session,
+    period: str | None = None,
+    source: str = "naver_datalab",
+    sort: str = "spend_gap",
+    limit: int | None = None,
+    redis_client: Redis | None = None,
+) -> dict:
+    period = period or _latest_period(db, source)
+    if period is None:
+        return {"period": None, "source": source, "items": []}
+
+    # 무거운 집계는 (source, period) 단위로 캐시. 정렬/limit은 히트 후 파이썬에서 적용하므로
+    # sort/limit 조합이 달라도 캐시 엔트리 1개를 공유한다.
+    items = _items_cached(db, period, source, redis_client)
+
     reverse = True  # gap 큰(양수) 순 = 화제성만 높은 순
-    items.sort(key=lambda x: x.get(sort, 0), reverse=reverse)
+    items = sorted(items, key=lambda x: x.get(sort, 0), reverse=reverse)
     if limit:
         items = items[:limit]
     return {"period": period, "source": source, "items": items}
