@@ -45,6 +45,29 @@ CATEGORY_GROUP_LIMIT = 5
 # 최댓값을 가장 안정적으로 차지하는 "미용실"로 교체했다.
 CATEGORY_ANCHOR = "미용실"
 
+# 데이터랩 ages 파라미터가 받는 11개 연령 코드(1=0~12세 ... 11=60세 이상)를
+# 서비스에서 쓰는 6개 연령대 라벨로 묶는다. 코드 3(19~24세)이 "20대" 쪽에 섞여
+# 19세가 살짝 걸치는 근사가 있지만, 데이터랩이 제공하는 최소 단위가 이거라
+# 더 정교하게 나눌 수 없다.
+AGE_BUCKETS: dict[str, list[str]] = {
+    "10대": ["2"],
+    "20대": ["3", "4"],
+    "30대": ["5", "6"],
+    "40대": ["7", "8"],
+    "50대": ["9", "10"],
+    "60대": ["11"],
+}
+
+# category_search_trend.source(String(20))에 넣을 연령대별 태그. "naver_datalab_age_20"
+# 형태(20자)로 rising/sinking·popularity용 source와 섞이지 않게 분리한다.
+AGE_DEMAND_SOURCE_PREFIX = "naver_datalab_age_"
+_AGE_BUCKET_SUFFIX: dict[str, str] = {"10대": "10", "20대": "20", "30대": "30", "40대": "40", "50대": "50", "60대": "60"}
+
+
+def age_demand_source(bucket_label: str) -> str:
+    """연령대 라벨("20대" 등)을 category_search_trend.source 태그로 변환한다(순수 함수)."""
+    return f"{AGE_DEMAND_SOURCE_PREFIX}{_AGE_BUCKET_SUFFIX[bucket_label]}"
+
 # 배치 간 지연/재시도 — 데이터랩 버스트 rate limit 회피용.
 # 개별 키워드는 성공하는데 5개씩 20배치를 연속 호출하면 일부 배치가 버스트
 # 한도에 걸려 스킵되는 현상이 관측되어(고정 backoff 2회로는 회복 불충분),
@@ -102,27 +125,39 @@ def build_category_batches_with_anchor(
 
 
 def build_category_payload(
-    category_names: list[str], start_date: str, end_date: str, time_unit: str = "month"
+    category_names: list[str],
+    start_date: str,
+    end_date: str,
+    time_unit: str = "month",
+    ages: list[str] | None = None,
 ) -> dict:
-    """데이터랩 요청 body를 조립한다. groupName = 업종명 자체."""
-    return {
+    """데이터랩 요청 body를 조립한다. groupName = 업종명 자체.
+
+    ages를 주면 해당 연령 코드(들)로 검색모수를 필터링한 트렌드를 요청한다
+    (성별 파라미터는 이 서비스에서 쓰지 않아 뺐다).
+    """
+    payload: dict = {
         "startDate": start_date,
         "endDate": end_date,
         "timeUnit": time_unit,
         "keywordGroups": [{"groupName": name, "keywords": [name]} for name in category_names],
     }
+    if ages:
+        payload["ages"] = ages
+    return payload
 
 
-def fetch_category_trend(category_names: list[str], months: int = 6) -> dict:
+def fetch_category_trend(category_names: list[str], months: int = 6, ages: list[str] | None = None) -> dict:
     """업종명 배치(≤5개) 검색어 트렌드를 1회 호출로 조회해 raw 응답(dict)을 반환한다.
 
+    ages를 주면 그 연령대로 필터링된 트렌드를 조회한다(AGE_BUCKETS 참고).
     키가 없으면 RuntimeError.
     """
     if not settings.NAVER_CLIENT_ID or not settings.NAVER_CLIENT_SECRET:
         raise RuntimeError("네이버 데이터랩 키(NAVER_CLIENT_ID/SECRET)가 설정되지 않았습니다")
 
     start_date, end_date = _recent_range(months)
-    payload = build_category_payload(category_names, start_date, end_date)
+    payload = build_category_payload(category_names, start_date, end_date, ages=ages)
     headers = {
         "X-Naver-Client-Id": settings.NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": settings.NAVER_CLIENT_SECRET,
@@ -136,7 +171,9 @@ def fetch_category_trend(category_names: list[str], months: int = 6) -> dict:
     return data
 
 
-def _fetch_batches_with_retry(batches: list[list[str]], months: int) -> tuple[list[dict], int]:
+def _fetch_batches_with_retry(
+    batches: list[list[str]], months: int, ages: list[str] | None = None
+) -> tuple[list[dict], int]:
     """배치 리스트를 순회하며 호출한다. 배치 사이에 지연을 두고, 실패한 배치는
     백오프 후 재시도한다. 재시도까지 실패하면 경고 후 다음 배치를 계속하되,
     스킵된 배치에 담겼던 업종 수를 합산해 반환한다(ingestion_run.failed_count 반영용).
@@ -150,7 +187,7 @@ def _fetch_batches_with_retry(batches: list[list[str]], months: int) -> tuple[li
             time.sleep(BATCH_DELAY_SEC)
         for attempt in range(1, BATCH_MAX_RETRIES + 1):
             try:
-                responses.append(fetch_category_trend(batch, months=months))
+                responses.append(fetch_category_trend(batch, months=months, ages=ages))
                 logger.info("업종 데이터랩 배치 %d/%d 완료 (%d개)", i, len(batches), len(batch))
                 break
             except Exception:
@@ -177,14 +214,19 @@ def fetch_category_trend_batched(category_names: list[str], months: int = 6) -> 
 
 
 def fetch_category_trend_batched_with_anchor(
-    category_names: list[str], months: int = 6, anchor: str = CATEGORY_ANCHOR
+    category_names: list[str],
+    months: int = 6,
+    anchor: str = CATEGORY_ANCHOR,
+    ages: list[str] | None = None,
 ) -> tuple[list[dict], int]:
     """업종명 전체를 앵커 포함 배치로 나눠 데이터랩을 여러 번 호출한다.
 
     "많이 검색된 업종"처럼 업종 간 절대값을 비교해야 하는 용도에 쓴다
     (transformer가 앵커 대비로 재정규화해야 배치 간 비교가 가능해진다).
+    ages를 주면 연령대 필터가 걸린 채로 같은 앵커 재정규화 방식을 적용한다
+    (업종별 연령대 수요 비중 계산용, AGE_BUCKETS 참고).
     반환: (성공 응답 리스트, 재시도까지 실패해 스킵된 업종 수)
     """
     return _fetch_batches_with_retry(
-        build_category_batches_with_anchor(category_names, anchor=anchor), months
+        build_category_batches_with_anchor(category_names, anchor=anchor), months, ages=ages
     )
