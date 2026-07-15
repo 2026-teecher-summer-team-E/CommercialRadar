@@ -702,12 +702,15 @@ def ingest_category_trend(db: Session | None = None) -> IngestionRun:
         fetched += sum(len(r.get("results", [])) for r in anchor_responses)
         failed_age = 0
 
-        # popularity 상위 N개 업종만 연령대별 검색 비중을 추가로 수집한다.
+        # popularity 상위 N개 업종만 연령대별 검색 비중을 추가로 수집한다. 앵커 자신은
+        # ratio가 항상 100(자기 자신 대비 정규화)이라 무조건 최상위에 걸리는데, 그
+        # 연령대별 행은 나중에 걸러지므로(무의미) 여기서 미리 빼야 AGE_DEMAND_TOP_N
+        # 슬롯이 전부 실제 후보 업종으로 채워진다.
         latest_period = max((r["period"] for r in anchor_rows), default=None)
         top_names = [
             r["category_name"]
             for r in sorted(
-                (r for r in anchor_rows if r["period"] == latest_period),
+                (r for r in anchor_rows if r["period"] == latest_period and r["category_name"] != CATEGORY_ANCHOR),
                 key=lambda r: r["ratio"],
                 reverse=True,
             )[:AGE_DEMAND_TOP_N]
