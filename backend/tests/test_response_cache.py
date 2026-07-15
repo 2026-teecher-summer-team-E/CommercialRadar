@@ -112,3 +112,28 @@ def test_redis_read_failure_falls_back_to_compute(fake_redis):
 def test_invalidate_all_swallows_redis_failure(fake_redis):
     fake_redis.broken = True
     assert invalidate_all() == 0
+
+
+def test_warm_populates_cache_then_cached_response_hits(fake_redis):
+    from app.core.response_cache import warm
+
+    calls = {"n": 0}
+
+    def compute():
+        calls["n"] += 1
+        return {"type": "FeatureCollection", "features": []}
+
+    assert warm("geojson", {"gu_name": None}, compute) is True
+    assert calls["n"] == 1  # warm은 즉시 1회 계산
+
+    # 워밍 후 cached_response는 재계산 없이 캐시값 반환
+    got = cached_response("geojson", {"gu_name": None}, compute)
+    assert got == {"type": "FeatureCollection", "features": []}
+    assert calls["n"] == 1  # compute 재호출 안 됨(캐시 히트)
+
+
+def test_warm_survives_redis_failure(fake_redis):
+    from app.core.response_cache import warm
+
+    fake_redis.broken = True
+    assert warm("geojson", {"gu_name": None}, lambda: {"v": 1}) is False  # 예외 전파 없이 False
