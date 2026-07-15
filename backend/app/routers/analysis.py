@@ -11,6 +11,7 @@ from app.models.commercial_district import CommercialDistrict
 from app.models.rent_stats import RentStat
 from app.schemas.analysis import (
     CategoryRankingResponse,
+    CityCategoryRankingResponse,
     CommercialDistrictRentResponse,
     DistrictCategoryStatsResponse,
     DistrictTimeSeriesResponse,
@@ -73,19 +74,7 @@ def get_commercial_district_rent(
     db: Session = Depends(get_db),
 ):
     """상권 ID 기준으로 분기별·상가유형별 임대료를 반환합니다."""
-    district_exists = db.scalar(
-        select(CommercialDistrict.id).where(
-            CommercialDistrict.id == district_id,
-            CommercialDistrict.is_deleted.is_(False),
-        )
-    )
-    if district_exists is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="상권을 찾을 수 없습니다",
-        )
-
-    selected_quarter = year_quarter.strip() if year_quarter else None
+    selected_quarter_input = year_quarter.strip() if year_quarter else None
     selected_floor = floor_type.strip() if floor_type else None
     if selected_floor and selected_floor not in ALLOWED_RENT_FLOOR_TYPES:
         raise HTTPException(
@@ -93,47 +82,68 @@ def get_commercial_district_rent(
             detail="floor_type은 소규모, 중대형, 집합 중 하나여야 합니다",
         )
 
-    if not selected_quarter:
-        selected_quarter = db.scalar(
-            select(func.max(RentStat.year_quarter)).where(
-                RentStat.commercial_district_id == district_id,
-                RentStat.is_deleted.is_(False),
+    def _compute():
+        district_exists = db.scalar(
+            select(CommercialDistrict.id).where(
+                CommercialDistrict.id == district_id,
+                CommercialDistrict.is_deleted.is_(False),
             )
         )
+        if district_exists is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="상권을 찾을 수 없습니다",
+            )
 
-    if selected_quarter is None:
+        selected_quarter = selected_quarter_input
+        if not selected_quarter:
+            selected_quarter = db.scalar(
+                select(func.max(RentStat.year_quarter)).where(
+                    RentStat.commercial_district_id == district_id,
+                    RentStat.is_deleted.is_(False),
+                )
+            )
+
+        if selected_quarter is None:
+            return {
+                "district_id": district_id,
+                "year_quarter": None,
+                "rent_stats": [],
+            }
+
+        stmt = (
+            select(RentStat.floor_type, RentStat.avg_rent_per_sqm)
+            .where(
+                RentStat.commercial_district_id == district_id,
+                RentStat.year_quarter == selected_quarter,
+                RentStat.is_deleted.is_(False),
+            )
+            .order_by(RentStat.floor_type.asc())
+        )
+
+        if selected_floor:
+            stmt = stmt.where(RentStat.floor_type == selected_floor)
+
+        rent_stats = [
+            {
+                "floor_type": row.floor_type,
+                "avg_rent_per_sqm": row.avg_rent_per_sqm,
+            }
+            for row in db.execute(stmt).all()
+        ]
+
         return {
             "district_id": district_id,
-            "year_quarter": None,
-            "rent_stats": [],
+            "year_quarter": selected_quarter,
+            "rent_stats": rent_stats,
         }
 
-    stmt = (
-        select(RentStat.floor_type, RentStat.avg_rent_per_sqm)
-        .where(
-            RentStat.commercial_district_id == district_id,
-            RentStat.year_quarter == selected_quarter,
-            RentStat.is_deleted.is_(False),
-        )
-        .order_by(RentStat.floor_type.asc())
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response(
+        "rent",
+        {"district_id": district_id, "year_quarter": selected_quarter_input, "floor_type": selected_floor},
+        _compute,
     )
-
-    if selected_floor:
-        stmt = stmt.where(RentStat.floor_type == selected_floor)
-
-    rent_stats = [
-        {
-            "floor_type": row.floor_type,
-            "avg_rent_per_sqm": row.avg_rent_per_sqm,
-        }
-        for row in db.execute(stmt).all()
-    ]
-
-    return {
-        "district_id": district_id,
-        "year_quarter": selected_quarter,
-        "rent_stats": rent_stats,
-    }
 
 
 ALLOWED_METRICS = {"survival_rate", "closure_rate", "open_rate", "population", "sales"}
@@ -144,6 +154,7 @@ ALLOWED_CATEGORY_STAT_FIELDS = {
 }
 QUARTER_PATTERN = re.compile(r"^\d{4}-Q[1-4]$")
 CATEGORY_RANKING_MAX_LIMIT = 20
+CITY_CATEGORY_RANKING_MAX_LIMIT = 100
 
 
 def _parse_allowed_csv(raw: str | None, allowed: set[str], param_name: str) -> list[str]:
@@ -354,6 +365,52 @@ def get_category_ranking(
 
 
 @router.get(
+    "/categories/ranking",
+    response_model=CityCategoryRankingResponse,
+    summary="전체 상권 업종별 랭킹 조회",
+    description=(
+        "특정 상권에 국한하지 않고 전체 상권을 집계하여 업종을 district_score 기준 "
+        "내림차순으로 랭킹하여 반환합니다.\n\n"
+        "- 업종별 district_score/survival_rate는 상권별 total_business로 가중평균합니다.\n"
+        "- `year_quarter`를 생략하면 전체 상권 기준 가장 최신 분기를 자동으로 선택합니다."
+    ),
+)
+def get_city_category_ranking(
+    request: Request,
+    response: Response,
+    year_quarter: str | None = Query(
+        None,
+        description="조회할 분기 (YYYY-QN 형식). 생략 시 전체 상권 기준 최신 분기를 자동 선택합니다.",
+        examples=["2024-Q4"],
+    ),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=CITY_CATEGORY_RANKING_MAX_LIMIT,
+        description=f"반환할 최대 업종 수 (1~{CITY_CATEGORY_RANKING_MAX_LIMIT}, 기본값 50).",
+        examples=[50],
+    ),
+    db: Session = Depends(get_db),
+):
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+
+    cache_params = {"year_quarter": year_quarter, "limit": limit}
+    result = cached_response(
+        "city-category-ranking",
+        cache_params,
+        lambda: AnalysisService.get_city_category_ranking(
+            db,
+            year_quarter=year_quarter,
+            limit=limit,
+        ),
+    )
+    cached = apply_http_cache(request, response, result, max_age=300)
+    if cached is not None:
+        return cached
+    return result
+
+
+@router.get(
     "/commercial-districts/{district_id}/population-heatmap",
     response_model=PopulationHeatmapResponse,
     summary="상권 유동인구 히트맵(주변분포) 조회",
@@ -370,8 +427,12 @@ def get_population_heatmap(
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
     db: Session = Depends(get_db),
 ):
-    _get_existing_district_id(db, district_id)
-    return AnalysisService.get_population_heatmap(db, district_id=district_id)
+    def _compute():
+        _get_existing_district_id(db, district_id)
+        return AnalysisService.get_population_heatmap(db, district_id=district_id)
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response("population-heatmap", {"district_id": district_id}, _compute)
 
 
 @router.get(
@@ -414,8 +475,12 @@ def get_foreign_ratio(
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
     db: Session = Depends(get_db),
 ):
-    _get_existing_district_id(db, district_id)
-    return AnalysisService.get_foreign_ratio(db, district_id=district_id)
+    def _compute():
+        _get_existing_district_id(db, district_id)
+        return AnalysisService.get_foreign_ratio(db, district_id=district_id)
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response("foreign-ratio", {"district_id": district_id}, _compute)
 
 
 @router.get(

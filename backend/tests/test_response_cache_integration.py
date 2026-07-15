@@ -13,8 +13,10 @@ from geoalchemy2.elements import WKTElement
 from app.core import response_cache
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
+from app.models.foreign_population import ForeignPopulation
 from app.models.population_heatmap import PopulationHeatmap
 from app.models.population_timeseries import PopulationTimeseries
+from app.models.rent_stats import RentStat
 
 
 def _square_polygon(lat: float = 37.5, lng: float = 127.0, half_size: float = 0.001) -> WKTElement:
@@ -141,6 +143,129 @@ def test_sales_time_bands_second_request_is_cached(client, db, fake_redis):
     db.flush()
 
     second = client.get(f"/api/commercial-districts/{district.id}/sales-time-bands")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
+def test_rent_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-RENT")
+    db.add(
+        RentStat(
+            commercial_district_id=district.id,
+            year_quarter="2024-Q4",
+            floor_type="소규모",
+            avg_rent_per_sqm=85000,
+        )
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/rent")
+    assert first.status_code == 200
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/rent")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
+def test_foreign_ratio_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-FOREIGN")
+    db.add(
+        ForeignPopulation(
+            commercial_district_id=district.id,
+            dimension="time",
+            slot="06~11",
+            foreigner_count=10,
+            total_count=100,
+        )
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/foreign-ratio")
+    assert first.status_code == 200
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/foreign-ratio")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
+def test_rent_cache_key_varies_by_query_params(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-RENT-PARAMS")
+    db.add_all(
+        [
+            RentStat(
+                commercial_district_id=district.id,
+                year_quarter="2024-Q3",
+                floor_type="소규모",
+                avg_rent_per_sqm=50000,
+            ),
+            RentStat(
+                commercial_district_id=district.id,
+                year_quarter="2024-Q4",
+                floor_type="소규모",
+                avg_rent_per_sqm=85000,
+            ),
+            RentStat(
+                commercial_district_id=district.id,
+                year_quarter="2024-Q4",
+                floor_type="중대형",
+                avg_rent_per_sqm=42000,
+            ),
+        ]
+    )
+    db.flush()
+
+    # 서로 다른 year_quarter는 서로 다른 캐시 엔트리를 가져야 한다(응답이 섞이면 안 된다).
+    q3 = client.get(f"/api/commercial-districts/{district.id}/rent", params={"year_quarter": "2024-Q3"})
+    q4 = client.get(f"/api/commercial-districts/{district.id}/rent", params={"year_quarter": "2024-Q4"})
+    assert q3.status_code == 200
+    assert q4.status_code == 200
+    assert q3.json()["year_quarter"] == "2024-Q3"
+    assert q4.json()["year_quarter"] == "2024-Q4"
+    assert q3.json() != q4.json()
+
+    # floor_type 필터도 마찬가지로 별도 캐시 엔트리여야 한다.
+    filtered = client.get(
+        f"/api/commercial-districts/{district.id}/rent",
+        params={"year_quarter": "2024-Q4", "floor_type": "중대형"},
+    )
+    assert filtered.status_code == 200
+    assert filtered.json()["rent_stats"] == [{"floor_type": "중대형", "avg_rent_per_sqm": 42000}]
+    assert filtered.json() != q4.json()
+
+
+def test_population_heatmap_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-HEATMAP")
+    db.add_all(
+        [
+            PopulationHeatmap(
+                commercial_district_id=district.id, dimension="time", slot="06~11", avg_population=50
+            ),
+            PopulationHeatmap(
+                commercial_district_id=district.id, dimension="day", slot="월", avg_population=100
+            ),
+        ]
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/population-heatmap")
+    assert first.status_code == 200
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/population-heatmap")
     assert second.status_code == 200
     assert second.json() == first.json()
 
