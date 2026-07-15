@@ -97,20 +97,23 @@ class FakeSession:
             raise RuntimeError("close failed")
 
 
-def _raise_geojson(db, gu):
-    raise RuntimeError("db exec down")
+def test_warm_cache_rolls_back_injected_session_on_real_db_failure(fake_redis, monkeypatch, db):
+    # 실제 db.execute() 실패로 트랜잭션을 aborted 상태로 만든 뒤, warm_cache가 주입 세션을
+    # rollback해 재사용 가능 상태로 되돌리는지 검증한다(스텁이 아닌 실제 SQLAlchemy 계약).
+    from sqlalchemy import text
 
+    def failing_build(session, gu):
+        # 존재하지 않는 테이블 조회 → 트랜잭션 aborted.
+        session.execute(text("SELECT * FROM __nonexistent_table_xyz__"))
 
-def test_warm_cache_rolls_back_injected_session_on_failure(fake_redis, monkeypatch):
-    # 워밍 중 db.execute() 실패 시 주입된 세션을 rollback해 aborted-transaction을 정리한다.
-    monkeypatch.setattr(cache_warmer, "build_district_geojson", _raise_geojson)
-    session = FakeSession()
+    monkeypatch.setattr(cache_warmer, "build_district_geojson", failing_build)
 
-    n = cache_warmer.warm_cache(db=session)  # 주입 세션(점수 훅 경로)
-
+    n = cache_warmer.warm_cache(db=db)  # 주입 세션(점수 훅 경로)
     assert n == 0
-    assert session.rolled_back is True   # 실패 트랜잭션 정리됨
-    assert session.closed is False       # 주입 세션은 close하지 않음(소유권)
+
+    # rollback이 됐으면 세션이 복구되어 다음 쿼리가 성공한다.
+    # (rollback이 없으면 "current transaction is aborted"로 실패한다.)
+    assert db.execute(text("SELECT 1")).scalar() == 1
 
 
 def test_warm_cache_survives_session_creation_failure(fake_redis, monkeypatch):
