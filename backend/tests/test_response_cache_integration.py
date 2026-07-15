@@ -120,6 +120,33 @@ def test_population_ratios_second_request_is_cached(client, db, fake_redis):
     assert second.json() == first.json()
 
 
+def test_population_heatmap_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-HEATMAP")
+    db.add_all(
+        [
+            PopulationHeatmap(
+                commercial_district_id=district.id, dimension="time", slot="06~11", avg_population=50
+            ),
+            PopulationHeatmap(
+                commercial_district_id=district.id, dimension="day", slot="월", avg_population=100
+            ),
+        ]
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/population-heatmap")
+    assert first.status_code == 200
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/population-heatmap")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
 def test_radar_second_request_is_cached(client, db, fake_redis):
     district = _make_district(db, external_code="TEST-RESPCACHE-RADAR")
     db.add(
