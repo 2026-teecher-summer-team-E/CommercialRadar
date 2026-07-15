@@ -100,6 +100,17 @@ class CategoryRankingResponse(BaseModel):
     ranking: list[CategoryRankingItem] = Field(..., description="district_score 내림차순으로 정렬된 업종 랭킹")
 
 
+class CityCategoryRankingResponse(BaseModel):
+    """특정 상권에 국한하지 않고 전체 상권을 집계한 업종 랭킹."""
+
+    year_quarter: str | None = Field(
+        None, description="조회된 분기. 생략 시 전체 상권 기준 최신 분기가 자동 선택됨", examples=["2024-Q4"]
+    )
+    ranking: list[CategoryRankingItem] = Field(
+        ..., description="상권별 total_business 가중평균 district_score 내림차순으로 정렬된 업종 랭킹"
+    )
+
+
 class HeatmapSlot(BaseModel):
     slot: str = Field(..., description="시간대(예: 00~06) 또는 요일(예: 월)", examples=["00~06"])
     avg_population: float | None = Field(
