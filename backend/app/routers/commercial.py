@@ -1,3 +1,5 @@
+import hashlib
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from redis import Redis
 from sqlalchemy import func, or_, text
@@ -5,7 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.core.caching import apply_http_cache
 from app.core.deps import get_db, get_redis
-from app.core.response_cache import cached_response
+from app.core.response_cache import cached_json, cached_response
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.services import ranking_service
@@ -129,25 +131,26 @@ def list_district_geo(
 @router.get("/commercial-districts/geojson")
 def list_district_geojson(
     request: Request,
-    response: Response,
     gu_name: str | None = None,
     db: Session = Depends(get_db),
 ):
     """상권 경계 폴리곤을 GeoJSON FeatureCollection 으로 반환(Leaflet 구역 표시용).
 
-    ST_SimplifyPreserveTopology 로 단순화(≈30m)하고 좌표 정밀도 6자리로 낮춰 용량을 줄인다.
-    gu_name 으로 자치구 필터 가능.
+    ST_SimplifyPreserveTopology 로 단순화(≈70m)하고 좌표 정밀도 5자리로 낮춰 용량을 줄인다.
+    payload가 크므로 cached_json으로 캐시된 JSON 바이트를 그대로 내보내 dict 복원·재직렬화
+    왕복을 없앤다(웜 응답 CPU 대폭 절감). gu_name 으로 자치구 필터 가능.
     """
-
-    payload = cached_response(
+    body = cached_json(
         "geojson",
         {"gu_name": gu_name},
         lambda: build_district_geojson(db, gu_name),
     )
-    cached = apply_http_cache(request, response, payload, max_age=3600)
-    if cached is not None:
-        return cached
-    return payload
+    # ETag를 캐시된 원본 bytes에서 직접 계산 → payload를 다시 직렬화하지 않는다.
+    etag = f'"{hashlib.sha256(body).hexdigest()}"'
+    headers = {"Cache-Control": "public, max-age=3600", "ETag": etag}
+    if request.headers.get("if-none-match") == etag:
+        return Response(status_code=304, headers=headers)
+    return Response(content=body, media_type="application/json", headers=headers)
 
 
 def _latest_business_quarter(db: Session, district_id: int) -> str | None:

@@ -5,12 +5,13 @@
 """
 
 import fnmatch
+import json
 
 import pytest
 from redis.exceptions import ConnectionError as RedisConnectionError
 
 from app.core import response_cache
-from app.core.response_cache import cached_response, invalidate_all
+from app.core.response_cache import cached_json, cached_response, invalidate_all
 
 
 class FakeRedis:
@@ -137,3 +138,44 @@ def test_warm_survives_redis_failure(fake_redis):
 
     fake_redis.broken = True
     assert warm("geojson", {"gu_name": None}, lambda: {"v": 1}) is False  # 예외 전파 없이 False
+
+
+def test_cached_json_returns_bytes_and_hits_without_recompute(fake_redis):
+    calls = {"n": 0}
+    fc = {"type": "FeatureCollection", "features": []}
+
+    def compute():
+        calls["n"] += 1
+        return fc
+
+    first = cached_json("geojson", {"gu_name": None}, compute)
+    second = cached_json("geojson", {"gu_name": None}, compute)
+
+    assert isinstance(first, bytes)          # dict가 아니라 직렬화된 bytes
+    assert json.loads(first) == fc           # 내용은 동일
+    assert first == second                   # 히트 시 같은 bytes
+    assert calls["n"] == 1                    # 두 번째는 캐시 히트(재계산 없음)
+
+
+def test_cached_json_shares_key_with_warm(fake_redis):
+    # warm이 쓴 값을 cached_json이 재계산 없이 그대로 읽는다(같은 키·저장 포맷).
+    from app.core.response_cache import warm
+
+    fc = {"type": "FeatureCollection", "features": [{"id": 1}]}
+    assert warm("geojson", {"gu_name": None}, lambda: fc) is True
+
+    calls = {"n": 0}
+
+    def compute():
+        calls["n"] += 1
+        return {"should": "not be used"}
+
+    body = cached_json("geojson", {"gu_name": None}, compute)
+    assert json.loads(body) == fc
+    assert calls["n"] == 0                    # 워밍값을 그대로 히트
+
+
+def test_cached_json_survives_redis_failure(fake_redis):
+    fake_redis.broken = True
+    body = cached_json("geojson", {"gu_name": None}, lambda: {"ok": 1})
+    assert json.loads(body) == {"ok": 1}      # 폴백으로 직접 계산한 bytes 반환(예외 없음)
