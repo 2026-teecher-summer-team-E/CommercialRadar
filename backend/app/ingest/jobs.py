@@ -23,6 +23,7 @@ from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
 
 from app.core.response_cache import invalidate_all
+from app.services.cache_warmer import warm_cache
 from app.database import SessionLocal
 from app.ingest.clients.seoul_client import SeoulClient
 from app.ingest.clients.reb_client import RebClient, STATBL_FLOOR_TYPE
@@ -755,5 +756,9 @@ def run_targets(targets: list[str]) -> dict[str, str]:
     # 인제스천 데이터가 바뀌어야 갱신할 이유가 있다 — 하나라도 성공했으면 무효화한다.
     if any_success:
         invalidate_all()
+        try:
+            warm_cache()  # 무거운 geojson을 즉시 다시 데워 콜드 스타트 제거
+        except Exception:  # 워밍 실패가 인제스천 잡을 실패시키지 않게
+            logger.warning("인제스천 후 캐시 워밍 실패", exc_info=True)
 
     return results

@@ -64,6 +64,28 @@ def cached_response(
     return result
 
 
+def warm(
+    name: str,
+    params: dict[str, Any],
+    compute: Callable[[], Any],
+    ttl: int = DEFAULT_TTL_SECONDS,
+) -> bool:
+    """compute()를 강제 실행해 결과를 캐시에 저장한다(읽기 생략, pre-warm 용).
+
+    캐시 히트 여부와 무관하게 항상 재계산·덮어쓴다. Redis 저장 실패(RedisError)는
+    로그만 남기고 False를 반환한다(비치명적).
+    """
+    key = _build_key(name, params)
+    result = compute()
+    try:
+        client = get_redis_client()
+        client.setex(key, ttl, json.dumps(jsonable_encoder(result), ensure_ascii=False))
+        return True
+    except RedisError:
+        logger.warning("응답 캐시 워밍 저장 실패(key=%s)", key, exc_info=True)
+        return False
+
+
 def invalidate_all() -> int:
     """모든 응답 캐시(resp_cache:*)를 무효화한다.
 

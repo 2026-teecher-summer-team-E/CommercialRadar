@@ -1,5 +1,3 @@
-import json
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from redis import Redis
 from sqlalchemy import func, or_, text
@@ -11,6 +9,7 @@ from app.core.response_cache import cached_response
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.services import ranking_service
+from app.services.geojson_service import build_district_geojson
 from app.schemas.commercial import (
     CommercialDistrictDetailOut,
     CommercialDistrictSearchOut,
@@ -140,74 +139,11 @@ def list_district_geojson(
     gu_name 으로 자치구 필터 가능.
     """
 
-    def _compute() -> dict:
-        where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
-        query_params: dict[str, str] = {}
-        if gu_name:
-            where_clause = where + " AND cd.gu_name = :gu"
-            query_params["gu"] = gu_name
-        else:
-            where_clause = where
-        rows = (
-            db.execute(
-                text(
-                    f"""
-                    SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
-                           ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0003), 6) AS geojson,
-                           pop.avg_population AS population,
-                           score.district_score AS district_score
-                    FROM commercial_district cd
-                    LEFT JOIN LATERAL (
-                        SELECT pt.avg_population
-                        FROM population_timeseries pt
-                        WHERE pt.commercial_district_id = cd.id
-                          AND pt.dimension = 'total' AND pt.slot = 'total'
-                          AND pt.is_deleted = false
-                        ORDER BY pt.year_quarter DESC
-                        LIMIT 1
-                    ) pop ON true
-                    LEFT JOIN LATERAL (
-                        SELECT AVG(bc.district_score) AS district_score
-                        FROM business_category bc
-                        WHERE bc.commercial_district_id = cd.id
-                          AND bc.is_deleted = false
-                          AND bc.year_quarter = (
-                            SELECT bc2.year_quarter
-                            FROM business_category bc2
-                            WHERE bc2.commercial_district_id = cd.id
-                              AND bc2.is_deleted = false
-                            ORDER BY bc2.year_quarter DESC
-                            LIMIT 1
-                          )
-                    ) score ON true
-                    WHERE {where_clause}
-                    ORDER BY cd.id
-                    """
-                ),
-                query_params,
-            )
-            .mappings()
-            .all()
-        )
-        features = [
-            {
-                "type": "Feature",
-                "geometry": json.loads(r["geojson"]),
-                "properties": {
-                    "id": r["id"],
-                    "district_name": r["district_name"],
-                    "type_name": r["type_name"],
-                    "gu_name": r["gu_name"],
-                    "population": r["population"],
-                    "district_score": r["district_score"],
-                },
-            }
-            for r in rows
-            if r["geojson"]
-        ]
-        return {"type": "FeatureCollection", "features": features}
-
-    payload = cached_response("geojson", {"gu_name": gu_name}, _compute)
+    payload = cached_response(
+        "geojson",
+        {"gu_name": gu_name},
+        lambda: build_district_geojson(db, gu_name),
+    )
     cached = apply_http_cache(request, response, payload, max_age=3600)
     if cached is not None:
         return cached
