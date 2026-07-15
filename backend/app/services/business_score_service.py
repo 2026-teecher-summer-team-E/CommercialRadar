@@ -1,3 +1,5 @@
+import logging
+
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.sql import func
@@ -5,6 +7,9 @@ from sqlalchemy.sql import func
 from app.core.response_cache import invalidate_all
 from app.database import SessionLocal
 from app.models.ingestion_run import IngestionRun
+from app.services.cache_warmer import warm_cache
+
+logger = logging.getLogger(__name__)
 
 # 규칙 기반 district_score 계산 (ML 학습 없이, 이미 적재된 지표로 산정):
 #   score = 0.3 * survival_rate + 0.15 * open_rate
@@ -84,8 +89,12 @@ class BusinessScoreService:
                 run.finished_at = func.now()
                 db.commit()
                 # district_score가 바뀌었으니 이를 담은 응답 캐시(상세/ranking/compare/
-                # category-stats 등)도 무효화한다.
+                # category-stats 등)도 무효화하고, 무거운 geojson은 다시 데운다.
                 invalidate_all()
+                try:
+                    warm_cache(db)
+                except Exception:  # 워밍 실패가 점수 잡을 실패시키지 않게
+                    logger.warning("점수 재계산 후 캐시 워밍 실패", exc_info=True)
                 return run
             except Exception as exc:
                 db.rollback()
