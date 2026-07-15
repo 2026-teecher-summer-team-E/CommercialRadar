@@ -1,5 +1,3 @@
-import json
-
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response, status
 from redis import Redis
 from sqlalchemy import func, or_, text
