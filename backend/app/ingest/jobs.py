@@ -34,7 +34,9 @@ from app.ingest.clients.naver_datalab_client import (
     fetch_buzz_batched,
 )
 from app.ingest.clients.naver_category_client import (
+    AGE_BUCKETS,
     CATEGORY_ANCHOR,
+    age_demand_source,
     fetch_category_trend_batched,
     fetch_category_trend_batched_with_anchor,
 )
@@ -628,10 +630,21 @@ def ingest_buzz(db: Session | None = None) -> IngestionRun:
 # Job 7: 네이버 데이터랩 category_search_trend
 # ──────────────────────────────────────────────────────────────────────────────
 
+# 연령대별 검색 수요 수집 대상 — 프론트 키워드 클라우드(popular 상위 N개)에만 표시하므로
+# 그 범위만큼만 수집한다(업종마다 6개 연령대 버킷을 따로 호출해야 해서 전체 업종으로
+# 넓히면 데이터랩 일일 호출 한도에 부딪힐 수 있다).
+AGE_DEMAND_TOP_N = 9
+
+# popularity(앵커 재정규화) 데이터만 연도별 바 차트 레이스용으로 3년치를 수집한다.
+# 데이터랩은 기간과 무관하게 호출 1회당 그 기간 전체를 한 응답으로 주므로, 6개월이든
+# 36개월이든 배치(호출) 수는 동일하다 — 기간을 늘려도 API 호출량은 늘지 않는다.
+POPULARITY_HISTORY_MONTHS = 36
+
+
 def ingest_category_trend(db: Session | None = None) -> IngestionRun:
     """네이버 데이터랩 검색어 트렌드(업종명 키워드) → category_search_trend 적재.
 
-    business_category 최신 분기 기준 distinct 업종명 전체를 대상으로 두 가지를 수집한다:
+    business_category 최신 분기 기준 distinct 업종명 전체를 대상으로 세 가지를 수집한다:
 
     1. 앵커 없는 배치(5개씩) — rising/sinking 판정용. 업종 자기 자신의 구간별
        평균 변화율(%)로 계산하므로 배치마다 다른 정규화 스케일이 결과에
@@ -639,6 +652,11 @@ def ingest_category_trend(db: Session | None = None) -> IngestionRun:
     2. 앵커(CATEGORY_ANCHOR) 포함 배치 — "많이 검색된 업종" 절대값 비교용.
        배치 간 스케일을 앵커 대비로 재정규화해 별도 source(CATEGORY_POPULARITY_SOURCE)로
        저장한다(rising/sinking용 데이터와 섞이면 앵커 자체의 변동이 섞여 왜곡된다).
+       연도별 바 차트 레이스(popular/history)가 이 데이터를 쓰므로 POPULARITY_HISTORY_MONTHS
+       (3년)만큼 수집한다.
+    3. 2에서 나온 popularity 상위 AGE_DEMAND_TOP_N개 업종만, AGE_BUCKETS 연령대
+       코드로 필터링한 배치를 6번(연령대 수) 더 호출 — 업종별 "핵심 수요층" 계산용.
+       버킷마다 앵커 재정규화해 naver_datalab_age_{10..60} source로 저장한다.
 
     seoul_business 선행 완료 필요.
     """
@@ -676,15 +694,42 @@ def ingest_category_trend(db: Session | None = None) -> IngestionRun:
         upserted = upsert_category_trend(db, rows)
         fetched = sum(len(r.get("results", [])) for r in responses)
 
-        anchor_responses, failed_anchor = fetch_category_trend_batched_with_anchor(category_names, months=6)
+        anchor_responses, failed_anchor = fetch_category_trend_batched_with_anchor(
+            category_names, months=POPULARITY_HISTORY_MONTHS
+        )
         anchor_rows = transform_batched_category_responses_with_anchor(anchor_responses, CATEGORY_ANCHOR)
         upserted += upsert_category_trend(db, anchor_rows)
         fetched += sum(len(r.get("results", [])) for r in anchor_responses)
+        failed_age = 0
+
+        # popularity 상위 N개 업종만 연령대별 검색 비중을 추가로 수집한다.
+        latest_period = max((r["period"] for r in anchor_rows), default=None)
+        top_names = [
+            r["category_name"]
+            for r in sorted(
+                (r for r in anchor_rows if r["period"] == latest_period),
+                key=lambda r: r["ratio"],
+                reverse=True,
+            )[:AGE_DEMAND_TOP_N]
+        ]
+        for bucket_label, age_codes in AGE_BUCKETS.items():
+            bucket_responses, bucket_failed = fetch_category_trend_batched_with_anchor(
+                top_names, months=6, ages=age_codes
+            )
+            failed_age += bucket_failed
+            bucket_rows = transform_batched_category_responses_with_anchor(
+                bucket_responses, CATEGORY_ANCHOR, source=age_demand_source(bucket_label)
+            )
+            # 앵커 자신의 행은 정의상 매 버킷에서 ratio=100(자기 자신 대비 정규화)이라
+            # 실제 연령대 신호가 아니다 — "미용실"이 top_names에 들어도 그 행은 버린다.
+            bucket_rows = [r for r in bucket_rows if r["category_name"] != CATEGORY_ANCHOR]
+            upserted += upsert_category_trend(db, bucket_rows)
+            fetched += sum(len(r.get("results", [])) for r in bucket_responses)
 
         run.status = "success"
         run.fetched_count = fetched
         run.upserted_count = upserted
-        run.failed_count = failed_raw + failed_anchor
+        run.failed_count = failed_raw + failed_anchor + failed_age
         run.finished_at = func.now()
         db.commit()
         logger.info(
