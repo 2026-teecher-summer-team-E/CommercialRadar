@@ -25,7 +25,7 @@ class Settings(BaseSettings):
     ADMIN_KEY: str = ""
 
     # CORS 허용 origin(콤마 구분). 프로덕션은 프론트 도메인을 명시한다.
-    # 기본값은 로컬 개발용(Vite 5173 등) — 와일드카드('*')는 자격증명과 함께 못 쓰므로 쓰지 않는다.
+    # 기본값은 로컬 개발용(Vite 5173 등). '*'는 main.py에서 credential 호환 정규식으로 처리한다.
     CORS_ORIGINS: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:3000"
 
     # 로컬 실행 시 루트 .env를 읽는다. 도커 환경에선 compose의 env_file이

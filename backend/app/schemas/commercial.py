@@ -5,6 +5,7 @@ class DistrictCompareItem(BaseModel):
     avg_population: float | None = None
     survival_rate: float | None = None
     closure_rate: float | None = None
+    open_rate: float | None = None
     district_score: float | None = None
 
 class DistrictCompareResponse(BaseModel):

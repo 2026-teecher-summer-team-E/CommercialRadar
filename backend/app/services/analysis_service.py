@@ -37,6 +37,7 @@ class AnalysisService:
         breakdown: list[str],
         from_quarter: str | None,
         to_quarter: str | None,
+        category_name: str | None = None,
     ) -> dict:
         needs_business = bool(AnalysisService.RATE_METRICS & set(metrics)) or "sales" in metrics
         needs_population = "population" in metrics
@@ -58,6 +59,8 @@ class AnalysisService:
                 BusinessCategory.commercial_district_id == district_id,
                 BusinessCategory.is_deleted.is_(False),
             )
+            if category_name:
+                query = query.filter(BusinessCategory.category_name == category_name)
             query = AnalysisService._apply_quarter_range(query, BusinessCategory.year_quarter, from_quarter, to_quarter)
             for row in query.group_by(BusinessCategory.year_quarter).all():
                 entry = by_quarter.setdefault(row.year_quarter, {"year_quarter": row.year_quarter})
@@ -232,7 +235,12 @@ class AnalysisService:
         }
 
     @staticmethod
-    def get_radar(db: Session, district_id: int) -> dict:
+    def get_radar(
+        db: Session,
+        district_id: int,
+        year_quarter: str | None = None,
+        category_name: str | None = None,
+    ) -> dict:
         """상권 강점 프로필 5축을 0~100으로 정규화해 반환한다.
 
         산출식(각 축 0~100, 소수 1자리):
@@ -242,21 +250,23 @@ class AnalysisService:
           - stability:  100 - closure_rate(%) (상권 단위 가중평균), 0~100 클램프.
           - growth:     상권 단위 open_rate(%)를 5배 스케일(개업률은 통상 20% 안팎이라
                         5배 하면 20% → 100). 0~100 클램프.
-        기준 분기는 business_category 최신 분기. 데이터가 없으면 해당 축은 0.0.
+        기준 분기는 요청 분기 또는 business_category 최신 분기다. category_name을 지정하면
+        생존율·매출·안정성·성장성 축을 해당 업종으로 한정한다. 데이터가 없으면 해당 축은 0.0.
         """
-        target_quarter = (
-            db.query(func.max(BusinessCategory.year_quarter))
-            .filter(
+        target_quarter = year_quarter
+        if target_quarter is None:
+            quarter_query = db.query(func.max(BusinessCategory.year_quarter)).filter(
                 BusinessCategory.commercial_district_id == district_id,
                 BusinessCategory.is_deleted.is_(False),
             )
-            .scalar()
-        )
+            if category_name:
+                quarter_query = quarter_query.filter(BusinessCategory.category_name == category_name)
+            target_quarter = quarter_query.scalar()
 
         survival = population = sales = stability = growth = 0.0
 
         if target_quarter is not None:
-            biz = (
+            biz_query = (
                 db.query(
                     _weighted_avg(BusinessCategory.survival_rate, BusinessCategory.total_business).label(
                         "survival_rate"
@@ -274,8 +284,10 @@ class AnalysisService:
                     BusinessCategory.year_quarter == target_quarter,
                     BusinessCategory.is_deleted.is_(False),
                 )
-                .one()
             )
+            if category_name:
+                biz_query = biz_query.filter(BusinessCategory.category_name == category_name)
+            biz = biz_query.one()
 
             if biz.survival_rate is not None:
                 survival = _clamp(float(biz.survival_rate))
@@ -288,23 +300,15 @@ class AnalysisService:
                     math.log10(float(biz.total_sales) + 1.0) / AnalysisService.RADAR_SALES_LOG_CAP * 100.0
                 )
 
-            # population: population_timeseries 최신 분기 총 유동인구 사용.
+            # 유동인구는 업종과 무관하므로 선택한 기준 분기의 상권 전체 값을 사용한다.
             total_pop = (
                 db.query(func.sum(PopulationTimeseries.avg_population))
                 .filter(
                     PopulationTimeseries.commercial_district_id == district_id,
                     PopulationTimeseries.dimension == "total",
+                    PopulationTimeseries.slot == "total",
                     PopulationTimeseries.is_deleted.is_(False),
-                    PopulationTimeseries.year_quarter
-                    == (
-                        db.query(func.max(PopulationTimeseries.year_quarter))
-                        .filter(
-                            PopulationTimeseries.commercial_district_id == district_id,
-                            PopulationTimeseries.dimension == "total",
-                            PopulationTimeseries.is_deleted.is_(False),
-                        )
-                        .scalar_subquery()
-                    ),
+                    PopulationTimeseries.year_quarter == target_quarter,
                 )
                 .scalar()
             )

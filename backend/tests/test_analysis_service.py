@@ -60,3 +60,91 @@ def test_get_category_ranking_no_data_returns_empty_ranking(db, seed_district):
     assert result["district_id"] == seed_district.id
     assert result["year_quarter"] is None
     assert result["ranking"] == []
+
+
+def test_get_time_series_filters_business_metrics_by_category(db, seed_district):
+    _make_category(
+        db,
+        seed_district.id,
+        "카페",
+        "2024-Q1",
+        survival_rate=80.0,
+        closure_rate=10.0,
+        open_rate=5.0,
+        total_business=10,
+        total_sales=1_000_000,
+    )
+    _make_category(
+        db,
+        seed_district.id,
+        "음식점",
+        "2024-Q1",
+        survival_rate=20.0,
+        closure_rate=40.0,
+        open_rate=15.0,
+        total_business=10,
+        total_sales=9_000_000,
+    )
+
+    result = AnalysisService.get_time_series(
+        db,
+        district_id=seed_district.id,
+        metrics=["survival_rate", "sales"],
+        breakdown=[],
+        from_quarter=None,
+        to_quarter=None,
+        category_name="카페",
+    )
+
+    assert result["data"] == [
+        {"year_quarter": "2024-Q1", "survival_rate": 80.0, "sales": 1_000_000}
+    ]
+
+
+def test_get_radar_respects_requested_quarter_and_category(db, seed_district):
+    _make_category(
+        db,
+        seed_district.id,
+        "카페",
+        "2024-Q1",
+        survival_rate=80.0,
+        closure_rate=10.0,
+        open_rate=5.0,
+        total_business=10,
+        total_sales=1_000_000,
+    )
+    _make_category(
+        db,
+        seed_district.id,
+        "음식점",
+        "2024-Q1",
+        survival_rate=20.0,
+        closure_rate=40.0,
+        open_rate=15.0,
+        total_business=10,
+        total_sales=9_000_000,
+    )
+    _make_category(
+        db,
+        seed_district.id,
+        "카페",
+        "2024-Q2",
+        survival_rate=30.0,
+        closure_rate=50.0,
+        open_rate=1.0,
+        total_business=10,
+        total_sales=100,
+    )
+
+    result = AnalysisService.get_radar(
+        db,
+        district_id=seed_district.id,
+        year_quarter="2024-Q1",
+        category_name="카페",
+    )
+    axes = {axis["key"]: axis["value"] for axis in result["axes"]}
+
+    assert result["year_quarter"] == "2024-Q1"
+    assert axes["survival"] == 80.0
+    assert axes["stability"] == 90.0
+    assert axes["growth"] == 25.0

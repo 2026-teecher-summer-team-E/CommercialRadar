@@ -185,6 +185,7 @@ def _get_existing_district_id(db: Session, district_id: int) -> int:
     description=(
         "특정 상권의 생존율·폐업률·개업률·유동인구·매출을 분기별 시계열로 반환합니다.\n\n"
         "- `metrics`로 조회할 지표를 고르고, `breakdown`으로 유동인구의 연령/성별 세부 분류를 요청할 수 있습니다.\n"
+        "- `category_name`을 지정하면 업종별 생존율·폐업률·개업률·매출 추이를 반환합니다.\n"
         "- 응답은 `year_quarter` 오름차순으로 정렬됩니다.\n"
         "- 존재하지 않는 `district_id`는 404를 반환합니다."
     ),
@@ -218,6 +219,11 @@ def get_district_time_series(
         description="조회 종료 분기 (포함, YYYY-QN 형식). 생략 시 끝까지 조회합니다.",
         examples=["2023-Q4"],
     ),
+    category_name: str | None = Query(
+        None,
+        description="업종명 필터. 생략하면 전체 업종을 집계합니다.",
+        examples=["카페"],
+    ),
     db: Session = Depends(get_db),
 ):
     _get_existing_district_id(db, district_id)
@@ -234,6 +240,7 @@ def get_district_time_series(
         breakdown=breakdown_list,
         from_quarter=from_quarter,
         to_quarter=to_quarter,
+        category_name=category_name.strip() if category_name and category_name.strip() else None,
     )
 
 
@@ -346,17 +353,34 @@ def get_population_heatmap(
     description=(
         "특정 상권의 강점 프로필을 5축(생존율·유동인구·매출·안정성·성장성)으로 "
         "0~100 정규화해 반환합니다.\n\n"
-        "- 기준 분기는 해당 상권의 business_category 최신 분기입니다.\n"
+        "- `year_quarter`를 생략하면 해당 상권의 최신 분기를 사용합니다.\n"
+        "- `category_name`을 지정하면 업종별 지표로 레이더를 계산합니다. 유동인구는 상권 전체 기준입니다.\n"
         "- 각 축 산출식은 응답 스키마 및 서비스 주석을 참고하세요.\n"
         "- 존재하지 않는 `district_id`는 404를 반환합니다."
     ),
 )
 def get_radar(
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
+    year_quarter: str | None = Query(
+        None,
+        description="조회할 분기(YYYY-QN). 생략하면 최신 분기입니다.",
+        examples=["2024-Q4"],
+    ),
+    category_name: str | None = Query(
+        None,
+        description="업종명 필터. 생략하면 전체 업종을 집계합니다.",
+        examples=["카페"],
+    ),
     db: Session = Depends(get_db),
 ):
     _get_existing_district_id(db, district_id)
-    return AnalysisService.get_radar(db, district_id=district_id)
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+    return AnalysisService.get_radar(
+        db,
+        district_id=district_id,
+        year_quarter=year_quarter,
+        category_name=category_name.strip() if category_name and category_name.strip() else None,
+    )
 
 
 @router.get(

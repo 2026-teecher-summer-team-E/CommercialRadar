@@ -45,6 +45,7 @@ class CommercialService:
                 avg_population=population_map.get(did),
                 survival_rate=business_map.get(did, {}).get("survival_rate"),
                 closure_rate=business_map.get(did, {}).get("closure_rate"),
+                open_rate=business_map.get(did, {}).get("open_rate"),
                 district_score=business_map.get(did, {}).get("district_score"),
             )
             for did in district_ids
@@ -119,6 +120,7 @@ class CommercialService:
             BusinessCategory.commercial_district_id,
             func.avg(BusinessCategory.survival_rate).label("survival_rate"),
             func.avg(BusinessCategory.closure_rate).label("closure_rate"),
+            func.avg(BusinessCategory.open_rate).label("open_rate"),
             func.avg(BusinessCategory.district_score).label("district_score"),
         ).filter(
             BusinessCategory.commercial_district_id.in_(district_ids),
@@ -133,6 +135,7 @@ class CommercialService:
             row.commercial_district_id: {
                 "survival_rate": row.survival_rate,
                 "closure_rate": row.closure_rate,
+                "open_rate": row.open_rate,
                 "district_score": row.district_score,
             }
             for row in rows
