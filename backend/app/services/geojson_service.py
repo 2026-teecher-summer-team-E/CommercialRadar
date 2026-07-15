@@ -13,8 +13,9 @@ from sqlalchemy.orm import Session
 def build_district_geojson(db: Session, gu_name: str | None = None) -> dict:
     """상권 경계 폴리곤을 GeoJSON FeatureCollection dict로 반환.
 
-    ST_SimplifyPreserveTopology로 단순화(≈30m)하고 좌표 정밀도 6자리로 낮춰 용량을 줄인다.
-    gu_name으로 자치구 필터 가능(None이면 전체 서울).
+    ST_SimplifyPreserveTopology로 단순화(≈70m)하고 좌표 정밀도 5자리(≈1m)로 낮춰 용량을 줄인다.
+    (전체 서울 오버뷰 지도용이라 이 해상도로 충분하며, payload가 절반 이하로 줄어 전송·직렬화
+    비용이 크게 감소한다.) gu_name으로 자치구 필터 가능(None이면 전체 서울).
     """
     where = "cd.geometry IS NOT NULL AND cd.is_deleted = false"
     query_params: dict[str, str] = {}
@@ -28,7 +29,7 @@ def build_district_geojson(db: Session, gu_name: str | None = None) -> dict:
             text(
                 f"""
                 SELECT cd.id, cd.district_name, cd.type_name, cd.gu_name,
-                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0003), 6) AS geojson,
+                       ST_AsGeoJSON(ST_SimplifyPreserveTopology(cd.geometry, 0.0007), 5) AS geojson,
                        pop.avg_population AS population,
                        score.district_score AS district_score
                 FROM commercial_district cd
