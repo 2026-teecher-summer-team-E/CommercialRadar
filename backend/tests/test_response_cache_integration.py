@@ -122,6 +122,31 @@ def test_population_ratios_second_request_is_cached(client, db, fake_redis):
     assert second.json() == first.json()
 
 
+def test_sales_time_bands_second_request_is_cached(client, db, fake_redis):
+    district = _make_district(db, external_code="TEST-RESPCACHE-TIMEBANDS")
+    db.add(
+        BusinessCategory(
+            commercial_district_id=district.id,
+            category_name="한식",
+            year_quarter="2024-Q4",
+            time_band_sales={"06_11": 100.0, "17_21": 200.0},
+        )
+    )
+    db.flush()
+
+    first = client.get(f"/api/commercial-districts/{district.id}/sales-time-bands")
+    assert first.status_code == 200
+
+    # DB에서 소프트 삭제해도 캐시 히트라면 존재 확인 쿼리 없이 그대로 반환돼야 한다
+    # (검증이 캐시 밖에 남아있었다면 여기서 404가 났을 것이므로, 이 자체가 회귀 증거다).
+    district.is_deleted = True
+    db.flush()
+
+    second = client.get(f"/api/commercial-districts/{district.id}/sales-time-bands")
+    assert second.status_code == 200
+    assert second.json() == first.json()
+
+
 def test_rent_second_request_is_cached(client, db, fake_redis):
     district = _make_district(db, external_code="TEST-RESPCACHE-RENT")
     db.add(
