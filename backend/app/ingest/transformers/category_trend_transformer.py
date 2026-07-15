@@ -41,7 +41,7 @@ def transform_batched_category_responses(responses: list[dict]) -> list[dict]:
 
 
 def transform_batched_category_responses_with_anchor(
-    responses: list[dict], anchor: str
+    responses: list[dict], anchor: str, source: str = CATEGORY_POPULARITY_SOURCE
 ) -> list[dict]:
     """앵커 포함 배치 응답들을 앵커 대비로 재정규화해 펼친다.
 
@@ -50,7 +50,11 @@ def transform_batched_category_responses_with_anchor(
     된다(앵커 자신은 항상 100). 앵커가 없거나 그 기간의 앵커 값이 0 이하인 응답은
     스킵한다. 앵커는 매 배치에 등장하므로 (category_name, period)로 dedup한다.
 
-    반환: [{category_name, source(=CATEGORY_POPULARITY_SOURCE), period, ratio}]
+    source는 기본 CATEGORY_POPULARITY_SOURCE지만, 연령대 필터가 걸린 요청
+    (ages 파라미터)의 결과를 별도 태그로 저장할 때는 호출부에서 다른 값을
+    넘긴다(예: naver_category_client.age_demand_source("20대")).
+
+    반환: [{category_name, source, period, ratio}]
     """
     dedup: dict[tuple[str, str], dict] = {}
     for response in responses:
@@ -67,7 +71,7 @@ def transform_batched_category_responses_with_anchor(
                     continue
                 dedup[(name, period)] = {
                     "category_name": name,
-                    "source": CATEGORY_POPULARITY_SOURCE,
+                    "source": source,
                     "period": period,
                     "ratio": round(100.0 * float(point["ratio"]) / anchor_ratio, 5),
                 }
