@@ -75,3 +75,61 @@ def test_warm_cache_survives_failure(fake_redis, monkeypatch):
     monkeypatch.setattr(cache_warmer, "build_district_geojson", boom)
     # 워밍 실패는 예외 전파 없이 0건으로 처리
     assert cache_warmer.warm_cache(db=object()) == 0
+
+
+class FakeSession:
+    """rollback/close 호출을 추적하는 세션 스텁."""
+
+    def __init__(self, rollback_raises=False, close_raises=False):
+        self.rolled_back = False
+        self.closed = False
+        self._rollback_raises = rollback_raises
+        self._close_raises = close_raises
+
+    def rollback(self):
+        self.rolled_back = True
+        if self._rollback_raises:
+            raise RuntimeError("rollback failed")
+
+    def close(self):
+        self.closed = True
+        if self._close_raises:
+            raise RuntimeError("close failed")
+
+
+def _raise_geojson(db, gu):
+    raise RuntimeError("db exec down")
+
+
+def test_warm_cache_rolls_back_injected_session_on_failure(fake_redis, monkeypatch):
+    # 워밍 중 db.execute() 실패 시 주입된 세션을 rollback해 aborted-transaction을 정리한다.
+    monkeypatch.setattr(cache_warmer, "build_district_geojson", _raise_geojson)
+    session = FakeSession()
+
+    n = cache_warmer.warm_cache(db=session)  # 주입 세션(점수 훅 경로)
+
+    assert n == 0
+    assert session.rolled_back is True   # 실패 트랜잭션 정리됨
+    assert session.closed is False       # 주입 세션은 close하지 않음(소유권)
+
+
+def test_warm_cache_survives_session_creation_failure(fake_redis, monkeypatch):
+    # db=None에서 자체 세션 생성이 실패해도 호출 경로를 실패시키지 않는다(비치명적).
+    def boom_session():
+        raise RuntimeError("no db connection")
+
+    monkeypatch.setattr(cache_warmer, "SessionLocal", boom_session)
+    assert cache_warmer.warm_cache() == 0  # 예외 전파 없이 0건
+
+
+def test_warm_cache_survives_session_close_failure(fake_redis, monkeypatch):
+    # 자체 세션 close 실패도 삼킨다 — 워밍은 성공했으니 결과를 그대로 반환한다.
+    stub_fc = {"type": "FeatureCollection", "features": []}
+    monkeypatch.setattr(cache_warmer, "build_district_geojson", lambda db, gu: stub_fc)
+    session = FakeSession(close_raises=True)
+    monkeypatch.setattr(cache_warmer, "SessionLocal", lambda: session)
+
+    n = cache_warmer.warm_cache()  # db=None → 자체 세션 생성
+
+    assert n == 1
+    assert session.closed is True  # close 시도됨(예외는 비치명적으로 삼킴)
