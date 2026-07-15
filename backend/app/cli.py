@@ -43,6 +43,8 @@ def main(argv: list[str] | None = None) -> int:
     )
     load_pred.add_argument("csv_path", help="예측 결과 CSV 파일 경로")
 
+    sub.add_parser("warm-cache", help="무거운 응답 캐시(geojson 등)를 미리 채우기")
+
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
@@ -62,6 +64,12 @@ def main(argv: list[str] | None = None) -> int:
             run.status, run.fetched_count, run.upserted_count, run.failed_count,
         )
         return 0 if run.status == "success" and run.failed_count == 0 else 1
+
+    if args.command == "warm-cache":
+        from app.services.cache_warmer import warm_cache
+        n = warm_cache()
+        logger.info("캐시 워밍 완료: %d개 항목", n)
+        return 0
 
     return 0
 
