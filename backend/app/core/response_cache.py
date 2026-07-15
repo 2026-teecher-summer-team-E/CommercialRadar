@@ -89,6 +89,42 @@ def warm(
         return False
 
 
+def cached_json(
+    name: str,
+    params: dict[str, Any],
+    compute: Callable[[], Any],
+    ttl: int = DEFAULT_TTL_SECONDS,
+) -> bytes:
+    """cached_response의 '직렬화된 JSON 바이트' 버전.
+
+    cached_response는 히트 시 json.loads로 dict를 복원해 반환하고, 호출부(FastAPI)가 이를
+    다시 직렬화한다 — 큰 응답(전체 서울 geojson ~수백KB)에선 이 loads→재직렬화 왕복이 비싸다.
+    이 함수는 캐시에 저장된 JSON 문자열을 **그대로 bytes로 반환**해 왕복을 없앤다. 호출부는
+    이 bytes를 Response(content=...)로 바로 내보내고, ETag도 이 bytes에서 계산하면 된다.
+
+    저장 포맷은 cached_response/warm과 동일(json.dumps(jsonable_encoder(...)))이라 같은 키를
+    공유해도 호환된다. Redis 조회/저장 실패 시 캐시를 우회하고 직접 계산한 bytes를 반환한다.
+    """
+    key = _build_key(name, params)
+    try:
+        client = get_redis_client()
+        cached = client.get(key)
+    except RedisError:
+        logger.warning("응답 캐시 조회 실패(key=%s), DB로 폴백", key, exc_info=True)
+        return json.dumps(jsonable_encoder(compute()), ensure_ascii=False).encode()
+
+    if cached is not None:
+        # decode_responses=True라 get은 str을 반환 → bytes로 인코딩만(loads/재직렬화 없음).
+        return cached.encode() if isinstance(cached, str) else cached
+
+    body = json.dumps(jsonable_encoder(compute()), ensure_ascii=False)
+    try:
+        client.setex(key, ttl, body)
+    except RedisError:
+        logger.warning("응답 캐시 저장 실패(key=%s)", key, exc_info=True)
+    return body.encode()
+
+
 def invalidate_all() -> int:
     """모든 응답 캐시(resp_cache:*)를 무효화한다.
 
