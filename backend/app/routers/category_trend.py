@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -6,6 +6,7 @@ from app.ingest.clients.naver_category_client import CATEGORY_POPULARITY_SOURCE
 from app.schemas.category_trend import (
     CategorySearchTrendRankingResponse,
     PopularCategoriesResponse,
+    PopularityHistoryResponse,
     RelatedCategoriesResponse,
 )
 from app.services.category_trend_service import CategoryTrendService
@@ -48,6 +49,29 @@ def get_popular_categories(
     db: Session = Depends(get_db),
 ):
     return CategoryTrendService.get_popular_categories(db, source=source, limit=limit)
+
+
+@router.get(
+    "/categories/popular/history",
+    response_model=PopularityHistoryResponse,
+    summary="연도별 인기 업종 월별 추이 조회 (바 차트 레이스용)",
+    description=(
+        "지정 연도(year 생략 시 가장 최근 연도)의 마지막 달 기준 인기 업종 상위 limit개를 "
+        "골라, 그 업종들의 그 해 월별 popularity_index 추이를 반환한다. 순위는 이 limit개 "
+        "업종끼리만 상대적이며 전체 업종 대비 글로벌 순위는 아니다. available_years로 "
+        "선택 가능한 연도 목록을 함께 반환한다."
+    ),
+)
+def get_popularity_history(
+    source: str = Query(CATEGORY_POPULARITY_SOURCE, description="앵커 재정규화 데이터 소스"),
+    limit: int = Query(7, ge=1, le=20, description="추이를 표시할 업종 수 (1~20, 기본값 7)"),
+    year: str | None = Query(None, description="조회할 연도(YYYY). 생략 시 가장 최근 연도. 존재하지 않는 연도면 400"),
+    db: Session = Depends(get_db),
+):
+    try:
+        return CategoryTrendService.get_popularity_history(db, source=source, limit=limit, year=year)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get(
