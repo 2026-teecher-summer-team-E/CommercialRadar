@@ -189,6 +189,62 @@ class AnalysisService:
         }
 
     @staticmethod
+    def get_city_category_ranking(
+        db: Session,
+        year_quarter: str | None,
+        limit: int,
+    ) -> dict:
+        """특정 상권에 국한하지 않고 전체 상권을 집계한 업종 랭킹.
+
+        업종별 district_score/survival_rate는 상권별 total_business로 가중평균하고,
+        total_business는 전체 상권 합산이다. 기준 분기는 전체 상권을 통틀어 가장 최신
+        분기(상권별 최신 분기가 아님)를 사용한다.
+        """
+        resolved_quarter = year_quarter
+        if resolved_quarter is None:
+            resolved_quarter = (
+                db.query(func.max(BusinessCategory.year_quarter))
+                .filter(BusinessCategory.is_deleted.is_(False))
+                .scalar()
+            )
+
+        ranking: list[dict] = []
+        if resolved_quarter is not None:
+            weighted_score = _weighted_avg(BusinessCategory.district_score, BusinessCategory.total_business)
+            weighted_survival = _weighted_avg(BusinessCategory.survival_rate, BusinessCategory.total_business)
+            rows = (
+                db.query(
+                    BusinessCategory.category_name,
+                    weighted_score.label("district_score"),
+                    weighted_survival.label("survival_rate"),
+                    func.sum(BusinessCategory.total_business).label("total_business"),
+                )
+                .filter(
+                    BusinessCategory.year_quarter == resolved_quarter,
+                    BusinessCategory.is_deleted.is_(False),
+                )
+                .group_by(BusinessCategory.category_name)
+                .order_by(weighted_score.desc().nullslast(), BusinessCategory.category_name.asc())
+                .limit(limit)
+                .all()
+            )
+            ranking = [
+                {
+                    "rank": i + 1,
+                    "category_name": row.category_name,
+                    "district_score": row.district_score,
+                    "survival_rate": row.survival_rate,
+                    "total_business": row.total_business,
+                }
+                for i, row in enumerate(rows)
+            ]
+
+        return {
+            "year_quarter": resolved_quarter,
+            "ranking": ranking,
+        }
+
+    @staticmethod
     def get_population_heatmap(db: Session, district_id: int) -> dict:
         """주변분포(marginal) 유동인구를 시간대/요일 슬롯 리스트로 반환한다.
 
