@@ -11,6 +11,7 @@ from app.models.commercial_district import CommercialDistrict
 from app.models.rent_stats import RentStat
 from app.schemas.analysis import (
     CategoryRankingResponse,
+    CityCategoryRankingResponse,
     CommercialDistrictRentResponse,
     DistrictCategoryStatsResponse,
     DistrictTimeSeriesResponse,
@@ -144,6 +145,7 @@ ALLOWED_CATEGORY_STAT_FIELDS = {
 }
 QUARTER_PATTERN = re.compile(r"^\d{4}-Q[1-4]$")
 CATEGORY_RANKING_MAX_LIMIT = 20
+CITY_CATEGORY_RANKING_MAX_LIMIT = 100
 
 
 def _parse_allowed_csv(raw: str | None, allowed: set[str], param_name: str) -> list[str]:
@@ -354,6 +356,52 @@ def get_category_ranking(
 
 
 @router.get(
+    "/categories/ranking",
+    response_model=CityCategoryRankingResponse,
+    summary="전체 상권 업종별 랭킹 조회",
+    description=(
+        "특정 상권에 국한하지 않고 전체 상권을 집계하여 업종을 district_score 기준 "
+        "내림차순으로 랭킹하여 반환합니다.\n\n"
+        "- 업종별 district_score/survival_rate는 상권별 total_business로 가중평균합니다.\n"
+        "- `year_quarter`를 생략하면 전체 상권 기준 가장 최신 분기를 자동으로 선택합니다."
+    ),
+)
+def get_city_category_ranking(
+    request: Request,
+    response: Response,
+    year_quarter: str | None = Query(
+        None,
+        description="조회할 분기 (YYYY-QN 형식). 생략 시 전체 상권 기준 최신 분기를 자동 선택합니다.",
+        examples=["2024-Q4"],
+    ),
+    limit: int = Query(
+        50,
+        ge=1,
+        le=CITY_CATEGORY_RANKING_MAX_LIMIT,
+        description=f"반환할 최대 업종 수 (1~{CITY_CATEGORY_RANKING_MAX_LIMIT}, 기본값 50).",
+        examples=[50],
+    ),
+    db: Session = Depends(get_db),
+):
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+
+    cache_params = {"year_quarter": year_quarter, "limit": limit}
+    result = cached_response(
+        "city-category-ranking",
+        cache_params,
+        lambda: AnalysisService.get_city_category_ranking(
+            db,
+            year_quarter=year_quarter,
+            limit=limit,
+        ),
+    )
+    cached = apply_http_cache(request, response, result, max_age=300)
+    if cached is not None:
+        return cached
+    return result
+
+
+@router.get(
     "/commercial-districts/{district_id}/population-heatmap",
     response_model=PopulationHeatmapResponse,
     summary="상권 유동인구 히트맵(주변분포) 조회",
@@ -370,8 +418,12 @@ def get_population_heatmap(
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
     db: Session = Depends(get_db),
 ):
-    _get_existing_district_id(db, district_id)
-    return AnalysisService.get_population_heatmap(db, district_id=district_id)
+    def _compute():
+        _get_existing_district_id(db, district_id)
+        return AnalysisService.get_population_heatmap(db, district_id=district_id)
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response("population-heatmap", {"district_id": district_id}, _compute)
 
 
 @router.get(
