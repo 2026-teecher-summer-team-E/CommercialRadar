@@ -353,7 +353,9 @@ class CategoryTrendService:
         # 부작용이라 탭에서 뺀다 — 다만 진행 중인 최신 연도(올해)는 원래도 미래 달이
         # 없어 반쪽인 게 정상이므로 예외로 남긴다.
         available_years = [y for y in years_sorted if len(periods_by_year[y]) >= 12 or y == latest_year]
-        target_year = year if year in available_years else available_years[-1]
+        if year is not None and year not in available_years:
+            raise ValueError(f"연도 {year}에 대한 데이터가 없습니다. 사용 가능한 연도: {', '.join(available_years)}")
+        target_year = year if year is not None else available_years[-1]
 
         periods = [p for p in all_periods if p.startswith(target_year)]
         latest_period = periods[-1]

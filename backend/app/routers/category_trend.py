@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_db
@@ -65,10 +65,13 @@ def get_popular_categories(
 def get_popularity_history(
     source: str = Query(CATEGORY_POPULARITY_SOURCE, description="앵커 재정규화 데이터 소스"),
     limit: int = Query(7, ge=1, le=20, description="추이를 표시할 업종 수 (1~20, 기본값 7)"),
-    year: str | None = Query(None, description="조회할 연도(YYYY). 생략 시 가장 최근 연도"),
+    year: str | None = Query(None, description="조회할 연도(YYYY). 생략 시 가장 최근 연도. 존재하지 않는 연도면 400"),
     db: Session = Depends(get_db),
 ):
-    return CategoryTrendService.get_popularity_history(db, source=source, limit=limit, year=year)
+    try:
+        return CategoryTrendService.get_popularity_history(db, source=source, limit=limit, year=year)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.get(
