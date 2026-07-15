@@ -22,9 +22,12 @@ from app.core.redis_client import get_redis_client
 logger = logging.getLogger(__name__)
 
 CACHE_KEY_PREFIX = "resp_cache"
-# 6시간 — 분기 단위로만 바뀌는 데이터라 길게 잡는다. 실제 갱신은 위 완료 훅이 담당하므로
-# 이 TTL은 훅 호출이 누락되는 경우를 대비한 안전망이다.
-DEFAULT_TTL_SECONDS = 6 * 3600
+# 24시간 — 데이터는 분기 단위 배치로만 바뀌고, 실제 갱신은 완료 훅의 invalidate_all()이
+# 담당한다. 따라서 이 TTL은 훅이 누락된 경우의 안전망일 뿐이라 데이터 주기(분기)에 비해
+# 길게 잡아도 안전하다. 6h처럼 짧게 잡으면 무거운 응답(예: 전체 서울 geojson, 콜드 5s+)이
+# 신선도와 무관하게 하루 4번씩 만료·재계산돼 콜드 스탬피드를 유발하므로 24h로 둔다.
+# (읽기 시 TTL이 갱신되지 않는 fixed-window라, 이 값이 곧 콜드 재계산 주기의 상한이다.)
+DEFAULT_TTL_SECONDS = 24 * 3600
 
 
 def _build_key(name: str, params: dict[str, Any]) -> str:
