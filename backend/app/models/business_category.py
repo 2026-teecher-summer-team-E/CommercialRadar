@@ -33,6 +33,8 @@ class BusinessCategory(Base):
     tx_count = Column(Integer)             # THSMON_SELNG_CO (추정매출)
     total_sales = Column(BigInteger)       # THSMON_SELNG_AMT (추정매출)
     time_band_sales = Column(JSONB)        # 시간대별 매출 {"00_06": float, ... "21_24": float} (추정매출)
+    age_sales = Column(JSONB)              # 연령대별 매출 {"10대": float, ... "60대이상": float} (추정매출)
+    gender_sales = Column(JSONB)           # 성별 매출 {"남성": float, "여성": float} (추정매출)
     created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     updated_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), onupdate=func.now())
     is_deleted = Column(Boolean, nullable=False, default=False)
