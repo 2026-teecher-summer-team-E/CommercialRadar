@@ -49,3 +49,19 @@ class PopulationForecastResponse(BaseModel):
     district_id: int
     model: str
     forecast: list[PopulationForecastPoint]
+
+
+class RentForecastPoint(BaseModel):
+    year_quarter: str
+    avg_rent_per_sqm: float | None = None  # 대표값 = 추세 중앙값. 단위 천원/㎡
+    # 예측구간(비관 P10 / 낙관 P90). horizon이 멀수록 넓어진다. 없으면 대표값 폴백.
+    low: float | None = None
+    high: float | None = None
+    confidence: float | None = None
+
+
+class RentForecastResponse(BaseModel):
+    district_id: int
+    model: str
+    floor_type: str  # 소규모 / 중대형 / 집합
+    forecast: list[RentForecastPoint]

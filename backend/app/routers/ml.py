@@ -13,6 +13,8 @@ from app.models.ml_predictions import AGGREGATE_CATEGORY, MlPrediction
 from app.schemas.ml import (
     PopulationForecastPoint,
     PopulationForecastResponse,
+    RentForecastPoint,
+    RentForecastResponse,
     SalesForecastPoint,
     SalesForecastResponse,
     SurvivalForecastPoint,
@@ -24,7 +26,11 @@ router = APIRouter(tags=["ml"])
 PREDICTION_TYPE_SALES = "sales"
 PREDICTION_TYPE_SURVIVAL = "survival"
 PREDICTION_TYPE_POPULATION = "population"
+PREDICTION_TYPE_RENT = "rent"
 BREAKDOWN_CATEGORIES = ("gender", "age", "nationality")
+# 임대료 예측의 상가유형(ml_predictions.category_name에 실림). 기본은 표본이 가장 많은 중대형.
+RENT_FLOOR_TYPES = ("소규모", "중대형", "집합")
+DEFAULT_RENT_FLOOR_TYPE = "중대형"
 
 
 @router.get(
@@ -298,6 +304,95 @@ def get_population_forecast(
     return PopulationForecastResponse(
         district_id=district_id,
         model=model_version,
+        forecast=forecast,
+    )
+
+
+@router.get(
+    "/commercial-districts/{district_id}/rent-forecast",
+    response_model=RentForecastResponse,
+)
+def get_rent_forecast(
+    district_id: int,
+    quarters: int = Query(4, ge=1),
+    floor_type: str = Query(DEFAULT_RENT_FLOOR_TYPE),
+    db: Session = Depends(get_db),
+):
+    """상권의 상가유형별 임대료(천원/㎡)를 향후 N분기 예측.
+
+    임대료 예측은 상가유형(소규모/중대형/집합)마다 독립 시계열이라, sales/survival의
+    category_name 대신 floor_type 파라미터로 시리즈를 고른다(내부적으로 ml_predictions의
+    category_name = floor_type로 저장돼 있다). 기본값은 표본이 가장 많은 중대형.
+    """
+    if floor_type not in RENT_FLOOR_TYPES:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid floor_type: {floor_type} (allowed: {', '.join(RENT_FLOOR_TYPES)})",
+        )
+
+    # 1. 상권 유효성 확인
+    exists = (
+        db.query(CommercialDistrict.id)
+        .filter(
+            CommercialDistrict.id == district_id,
+            CommercialDistrict.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if exists is None:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+    # 2. 이 상권에 rent 예측이 하나라도 있는지 (없으면 배치 산출물 미로드 → 503)
+    has_any = (
+        db.query(MlPrediction.id)
+        .filter(
+            MlPrediction.commercial_district_id == district_id,
+            MlPrediction.prediction_type == PREDICTION_TYPE_RENT,
+            MlPrediction.is_deleted == False,  # noqa: E712
+        )
+        .first()
+    )
+    if has_any is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Model not loaded: rent-forecast",
+        )
+
+    # 3. floor_type(=category_name) 시리즈. 시간순 N분기. 배치는 미래 분기만 적재 전제.
+    rows = (
+        db.query(MlPrediction)
+        .filter(
+            MlPrediction.commercial_district_id == district_id,
+            MlPrediction.prediction_type == PREDICTION_TYPE_RENT,
+            MlPrediction.category_name == floor_type,
+            MlPrediction.is_deleted == False,  # noqa: E712
+        )
+        .order_by(MlPrediction.target_quarter.asc())
+        .limit(quarters)
+        .all()
+    )
+
+    forecast = []
+    for row in rows:
+        pv = row.predicted_value or {}
+        rent = pv.get("avg_rent_per_sqm")
+        sc = pv.get("scenarios") or {}
+        forecast.append(
+            RentForecastPoint(
+                year_quarter=row.target_quarter,
+                avg_rent_per_sqm=sc.get("mid", rent),
+                low=sc.get("low", rent),
+                high=sc.get("high", rent),
+                confidence=row.confidence,
+            )
+        )
+
+    model_version = rows[0].model_version if rows and rows[0].model_version else "TBD"
+
+    return RentForecastResponse(
+        district_id=district_id,
+        model=model_version,
+        floor_type=floor_type,
         forecast=forecast,
     )
 

@@ -43,7 +43,7 @@ REQUIRED_COLUMNS = {
     "model_version",
 }
 
-_VALID_TYPES = {"survival", "population", "sales"}
+_VALID_TYPES = {"survival", "population", "sales", "rent"}
 
 
 class PredictionRowIn(BaseModel):
