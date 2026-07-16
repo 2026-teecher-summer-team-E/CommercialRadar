@@ -29,4 +29,4 @@ DEVICE = os.getenv("ML_DEVICE", "cpu")
 PREDICTIONS_CSV = OUTPUT_DIR / "predictions.csv"
 
 # 각 예측 타입 → 모델 저장 하위 디렉터리 / ml_predictions.prediction_type
-PREDICTION_TYPES = ("survival", "population", "sales")
+PREDICTION_TYPES = ("survival", "population", "sales", "rent")

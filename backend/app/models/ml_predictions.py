@@ -24,7 +24,7 @@ class MlPrediction(Base):
 
     id = Column(BigInteger, primary_key=True, autoincrement=True)
     commercial_district_id = Column(BigInteger, ForeignKey("commercial_district.id"), nullable=False)
-    prediction_type = Column(String(20), nullable=False)  # 'survival' | 'population' | 'sales'
+    prediction_type = Column(String(20), nullable=False)  # 'survival' | 'population' | 'sales' | 'rent'
     target_quarter = Column(String(7), nullable=False)
     category_name = Column(String(50), nullable=False, server_default=AGGREGATE_CATEGORY)  # 업종명. 전체합산은 sentinel
     predicted_value = Column(JSONB, nullable=False)
