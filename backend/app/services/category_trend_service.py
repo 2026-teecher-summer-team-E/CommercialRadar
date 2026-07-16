@@ -149,6 +149,44 @@ def _business_trend_by_category(db: Session) -> dict[str, dict]:
     return result
 
 
+def _sales_trend_by_category(db: Session) -> dict[str, dict]:
+    """category_name → {qoq_sales_change_pct} (전체 상권 합산 total_sales 기준).
+
+    qoq_business_change와 같은 "바로 전 분기 대비" 기준이지만, 매출은 업종마다
+    절대 규모 편차가 점포 수보다 훨씬 커서 절대 원화 증감 대신 퍼센트 변화로 반환한다.
+    """
+    rows = (
+        db.query(
+            BusinessCategory.category_name,
+            BusinessCategory.year_quarter,
+            func.sum(BusinessCategory.total_sales).label("total_sales"),
+        )
+        .filter(
+            BusinessCategory.is_deleted.is_(False),
+            BusinessCategory.category_name.isnot(None),
+        )
+        .group_by(BusinessCategory.category_name, BusinessCategory.year_quarter)
+        .all()
+    )
+
+    by_category: dict[str, list[tuple[str, float]]] = {}
+    for name, quarter, total in rows:
+        if total is None:
+            continue
+        by_category.setdefault(name, []).append((quarter, float(total)))
+
+    result: dict[str, dict] = {}
+    for name, series in by_category.items():
+        series.sort(key=lambda p: p[0])
+        if len(series) < 2:
+            continue
+        prev_sales, latest_sales = series[-2][1], series[-1][1]
+        if prev_sales <= 0:
+            continue
+        result[name] = {"qoq_sales_change_pct": round((latest_sales - prev_sales) / prev_sales * 100, 1)}
+    return result
+
+
 def pearson_correlation(a: list[float], b: list[float]) -> float | None:
     """두 시계열의 피어슨 상관계수(-1~1)를 계산한다(순수 함수).
 
@@ -300,17 +338,20 @@ class CategoryTrendService:
         )
         search_trend = _search_trend_by_category(db)
         business_trend = _business_trend_by_category(db)
+        sales_trend = _sales_trend_by_category(db)
         core_age_group = _core_age_group_by_category(db)
         items: list[dict] = []
         for i, (name, ratio) in enumerate(rows):
             search = search_trend.get(name)
             biz = business_trend.get(name)
+            sales = sales_trend.get(name)
             items.append({
                 "rank": i + 1,
                 "category_name": name,
                 "popularity_index": round(float(ratio), 1),
                 "trend_pct": search["trend_pct"] if search else None,
                 "qoq_business_change": biz["qoq_business_change"] if biz else None,
+                "qoq_sales_change_pct": sales["qoq_sales_change_pct"] if sales else None,
                 "core_age_group": core_age_group.get(name),
             })
         return {"period": latest_period, "anchor": CATEGORY_ANCHOR, "items": items}
@@ -431,10 +472,13 @@ class CategoryTrendService:
 
         search_trend = _search_trend_by_category(db, source=source)
         business_trend = _business_trend_by_category(db)
+        sales_trend = _sales_trend_by_category(db)
         for item in related:
             search = search_trend.get(item["category_name"])
             biz = business_trend.get(item["category_name"])
+            sales = sales_trend.get(item["category_name"])
             item["trend_pct"] = search["trend_pct"] if search else None
             item["qoq_business_change"] = biz["qoq_business_change"] if biz else None
+            item["qoq_sales_change_pct"] = sales["qoq_sales_change_pct"] if sales else None
 
         return {"category_name": category_name, "related": related}
