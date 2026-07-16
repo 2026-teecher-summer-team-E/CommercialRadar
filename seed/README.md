@@ -6,6 +6,8 @@
 - **`.sql.gz`** — `buzz_stats`(화제성)까지 포함한 최신 덤프. `gunzip | psql`로 직접 복원. **현재 배포 서버가 이 방식으로 적재됨.** (아래 "리뉴얼 복원 명령")
 - **`.zip`** — `scripts/seed-db.sh` 자동 복원용(기존). buzz_stats 미포함.
 
+> 📄 **임대료 4분기 예측 데이터**만 따로 넘길 때는 `rent_predictions.csv` + [`RENT_FORECAST.md`](RENT_FORECAST.md) 참고 (ML 환경 없이 CSV 한 줄 적재).
+
 ---
 
 ## 리뉴얼 복원 명령 (`.sql.gz`, buzz 포함)

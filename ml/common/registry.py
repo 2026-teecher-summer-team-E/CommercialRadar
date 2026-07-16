@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from ml.common.base import Forecaster
 from ml.forecasters.population import PopulationForecaster
+from ml.forecasters.rent import RentForecaster
 from ml.forecasters.sales import SalesForecaster
 from ml.forecasters.survival import SurvivalForecaster
 
@@ -19,6 +20,7 @@ REGISTRY: dict[str, type[Forecaster]] = {
     "survival-forecast": SurvivalForecaster,
     "population-forecast": PopulationForecaster,
     "sales-forecast": SalesForecaster,
+    "rent-forecast": RentForecaster,
 }
 
 

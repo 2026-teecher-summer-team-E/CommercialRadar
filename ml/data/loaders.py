@@ -83,6 +83,25 @@ def load_population_frame(engine: Engine) -> pd.DataFrame:
     return df
 
 
+def load_rent_frame(engine: Engine) -> pd.DataFrame:
+    """rent_stats 전체(미삭제) → DataFrame. rent 소스.
+
+    시리즈 키는 (commercial_district_id, floor_type). floor_type(소규모/중대형/집합)별로
+    독립 임대료 추세를 갖는다. avg_rent_per_sqm 단위는 천원/㎡.
+    """
+    sql = text(
+        """
+        SELECT commercial_district_id, year_quarter, floor_type, avg_rent_per_sqm
+        FROM rent_stats
+        WHERE is_deleted = false
+        """
+    )
+    df = pd.read_sql(sql, engine)
+    df["period"] = df["year_quarter"].map(year_quarter_to_period)
+    logger.info("rent_stats 로드: %d행, 분기 %d개", len(df), df["period"].nunique())
+    return df
+
+
 # ──────────────────────────────────────────────────────────────────────────────
 # DataFrame → Darts TimeSeries 리스트 (글로벌 학습용)
 # ──────────────────────────────────────────────────────────────────────────────
