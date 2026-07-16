@@ -35,6 +35,8 @@ def upsert_batch(db: Session, rows: list[dict]) -> int:
             "peak_end": stmt.excluded.peak_end,
             "total_sales": stmt.excluded.total_sales,
             "time_band_sales": stmt.excluded.time_band_sales,
+            "age_sales": stmt.excluded.age_sales,
+            "gender_sales": stmt.excluded.gender_sales,
             "tx_count": stmt.excluded.tx_count,
             "total_business": stmt.excluded.total_business,
             "open_rate": stmt.excluded.open_rate,

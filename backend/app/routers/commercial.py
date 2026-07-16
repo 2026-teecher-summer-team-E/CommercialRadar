@@ -17,6 +17,7 @@ from app.schemas.commercial import (
     CommercialDistrictSearchOut,
     DistrictGeoOut,
     LatestStatsOut,
+    SalesByDemographicsResponse,
     SalesTimeBandsResponse,
 )
 
@@ -241,6 +242,80 @@ def get_sales_time_bands(district_id: int, db: Session = Depends(get_db)):
 
     # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
     return cached_response("sales-time-bands", {"district_id": district_id}, _compute)
+
+
+@router.get(
+    "/commercial-districts/{district_id}/sales-by-demographics",
+    response_model=SalesByDemographicsResponse,
+)
+def get_sales_by_demographics(district_id: int, db: Session = Depends(get_db)):
+    """상권 최신 분기 업종별 매출을 연령대별·성별로 합산해 반환한다.
+
+    원천(VwsmTrdarSelngQq)에는 연령×성별 교차 매출이 없어 marginal 두 개(age/gender)만 제공한다.
+    재인제스천 전 DB 행엔 age_sales/gender_sales가 없어, 데이터가 없으면 값을 null로 반환한다.
+    """
+
+    def _compute():
+        # 존재하지 않는 district는 404 ("데이터 없는 유효 district"와 구분).
+        district_exists = (
+            db.query(CommercialDistrict.id)
+            .filter(
+                CommercialDistrict.id == district_id,
+                CommercialDistrict.is_deleted == False,  # noqa: E712
+            )
+            .first()
+        )
+        if district_exists is None:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="District not found")
+
+        latest_quarter = _latest_business_quarter(db, district_id)
+        if latest_quarter is None:
+            return SalesByDemographicsResponse(district_id=district_id)
+
+        rows = (
+            db.query(
+                BusinessCategory.total_sales,
+                BusinessCategory.age_sales,
+                BusinessCategory.gender_sales,
+            )
+            .filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == latest_quarter,
+                BusinessCategory.is_deleted == False,  # noqa: E712
+            )
+            .all()
+        )
+
+        total_sales_sum = 0
+        total_sales_present = False
+        age_totals: dict[str, float] = {}
+        gender_totals: dict[str, float] = {}
+        for total_sales, age_sales, gender_sales in rows:
+            if total_sales is not None:
+                total_sales_sum += int(total_sales)
+                total_sales_present = True
+            if isinstance(age_sales, dict):
+                for key, val in age_sales.items():
+                    if val is None:
+                        continue
+                    age_totals[key] = age_totals.get(key, 0.0) + float(val)
+            if isinstance(gender_sales, dict):
+                for key, val in gender_sales.items():
+                    if val is None:
+                        continue
+                    gender_totals[key] = gender_totals.get(key, 0.0) + float(val)
+
+        # 재인제스천 전이라 breakdown 데이터가 전혀 없으면 값 없이 반환.
+        return SalesByDemographicsResponse(
+            district_id=district_id,
+            year_quarter=latest_quarter,
+            total_sales=total_sales_sum if total_sales_present else None,
+            age=age_totals or None,
+            gender=gender_totals or None,
+        )
+
+    # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
+    return cached_response("sales-by-demographics", {"district_id": district_id}, _compute)
 
 
 @router.get("/commercial-districts/{district_id}", response_model=CommercialDistrictDetailOut)

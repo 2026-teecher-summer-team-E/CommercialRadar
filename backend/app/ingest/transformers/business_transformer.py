@@ -34,6 +34,22 @@ _PEAK_TIMES: dict[str, tuple[time, time]] = {
     # 21~24시 종료를 23:59로 표현 (Python time은 24:00 불가)
 }
 
+# 연령대별 매출 API 필드명 → 프론트 라벨 (population_timeseries slot 규칙과 동일)
+_AGE_SALES_FIELDS: dict[str, str] = {
+    "AGRDE_10_SELNG_AMT": "10대",
+    "AGRDE_20_SELNG_AMT": "20대",
+    "AGRDE_30_SELNG_AMT": "30대",
+    "AGRDE_40_SELNG_AMT": "40대",
+    "AGRDE_50_SELNG_AMT": "50대",
+    "AGRDE_60_ABOVE_SELNG_AMT": "60대이상",
+}
+
+# 성별 매출 API 필드명 → 프론트 라벨
+_GENDER_SALES_FIELDS: dict[str, str] = {
+    "ML_SELNG_AMT": "남성",
+    "FML_SELNG_AMT": "여성",
+}
+
 # (TRDAR_CD, SVC_INDUTY_CD) 조합 키
 MergeKey = tuple[str, str]
 
@@ -108,6 +124,24 @@ def _derive_time_band_sales(raw: dict) -> dict[str, float] | None:
             any_present = True
             bands[band_key] = float(val)
     return bands if any_present else None
+
+
+def _derive_breakdown_sales(raw: dict, field_map: dict[str, str]) -> dict[str, float] | None:
+    """field_map(API 필드 → 라벨)을 순회해 매출 breakdown dict로 변환.
+
+    반환 형태 예: {"10대": float, ..., "60대이상": float} 또는 {"남성": float, "여성": float}.
+    값이 없으면 0.0. 모든 필드가 결측이면 None을 반환한다(time_band_sales와 동일 규약).
+    """
+    out: dict[str, float] = {}
+    any_present = False
+    for field, label in field_map.items():
+        val = raw.get(field)
+        if val is None:
+            out[label] = 0.0
+        else:
+            any_present = True
+            out[label] = float(val)
+    return out if any_present else None
 
 
 # ──────────────────────────────────────────────────────────
@@ -222,6 +256,10 @@ def merge_and_transform(
         # 시간대별 매출 (추정매출에서만 계산)
         time_band_sales = _derive_time_band_sales(selng_raw) if selng_raw else None
 
+        # 연령대별·성별 매출 (추정매출에서만 계산)
+        age_sales = _derive_breakdown_sales(selng_raw, _AGE_SALES_FIELDS) if selng_raw else None
+        gender_sales = _derive_breakdown_sales(selng_raw, _GENDER_SALES_FIELDS) if selng_raw else None
+
         # 매출·거래건수 (추정매출)
         total_sales: int | None = None
         tx_count: int | None = None
@@ -255,6 +293,8 @@ def merge_and_transform(
             "peak_end": peak_end,
             "total_sales": total_sales,
             "time_band_sales": time_band_sales,
+            "age_sales": age_sales,
+            "gender_sales": gender_sales,
             "tx_count": tx_count,
             "total_business": total_business,
             "open_rate": open_rate,
