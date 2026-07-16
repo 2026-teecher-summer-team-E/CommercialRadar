@@ -107,3 +107,18 @@ class SalesTimeBandsResponse(BaseModel):
     daytime_pct: float | None = None
     nighttime_pct: float | None = None
     bands: dict[str, float] | None = None
+
+
+class SalesByDemographicsResponse(BaseModel):
+    """상권 최신 분기 연령대별·성별 매출(원). 전 업종을 합산한 상권 단위 값.
+
+    라벨은 프론트 규약과 동일: 연령 "10대".."60대이상", 성별 "남성"/"여성".
+    원천(VwsmTrdarSelngQq)에는 연령×성별 교차 매출이 없어 marginal 두 개만 제공한다.
+    재인제스천 전 DB 행엔 age_sales/gender_sales가 없어, 데이터가 없으면 null로 반환한다.
+    """
+
+    district_id: int
+    year_quarter: str | None = None
+    total_sales: int | None = None             # 전 업종 합산 총매출(원). breakdown 비율 산정 기준값
+    age: dict[str, float] | None = None       # {"10대": 원, ..., "60대이상": 원}
+    gender: dict[str, float] | None = None     # {"남성": 원, "여성": 원}
