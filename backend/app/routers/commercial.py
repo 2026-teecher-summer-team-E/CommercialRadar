@@ -273,7 +273,11 @@ def get_sales_by_demographics(district_id: int, db: Session = Depends(get_db)):
             return SalesByDemographicsResponse(district_id=district_id)
 
         rows = (
-            db.query(BusinessCategory.age_sales, BusinessCategory.gender_sales)
+            db.query(
+                BusinessCategory.total_sales,
+                BusinessCategory.age_sales,
+                BusinessCategory.gender_sales,
+            )
             .filter(
                 BusinessCategory.commercial_district_id == district_id,
                 BusinessCategory.year_quarter == latest_quarter,
@@ -282,9 +286,14 @@ def get_sales_by_demographics(district_id: int, db: Session = Depends(get_db)):
             .all()
         )
 
+        total_sales_sum = 0
+        total_sales_present = False
         age_totals: dict[str, float] = {}
         gender_totals: dict[str, float] = {}
-        for age_sales, gender_sales in rows:
+        for total_sales, age_sales, gender_sales in rows:
+            if total_sales is not None:
+                total_sales_sum += int(total_sales)
+                total_sales_present = True
             if isinstance(age_sales, dict):
                 for key, val in age_sales.items():
                     if val is None:
@@ -300,6 +309,7 @@ def get_sales_by_demographics(district_id: int, db: Session = Depends(get_db)):
         return SalesByDemographicsResponse(
             district_id=district_id,
             year_quarter=latest_quarter,
+            total_sales=total_sales_sum if total_sales_present else None,
             age=age_totals or None,
             gender=gender_totals or None,
         )

@@ -119,5 +119,6 @@ class SalesByDemographicsResponse(BaseModel):
 
     district_id: int
     year_quarter: str | None = None
+    total_sales: int | None = None             # 전 업종 합산 총매출(원). breakdown 비율 산정 기준값
     age: dict[str, float] | None = None       # {"10대": 원, ..., "60대이상": 원}
     gender: dict[str, float] | None = None     # {"남성": 원, "여성": 원}
