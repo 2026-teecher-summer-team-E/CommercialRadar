@@ -108,18 +108,18 @@ def _search_trend_by_category(db: Session, source: str = "naver_datalab") -> dic
     return result
 
 
-def _business_trend_by_category(db: Session) -> dict[str, dict]:
-    """category_name → {business_trend_pct, qoq_business_change} (전체 상권 합산 기준).
+def _category_quarter_totals(db: Session) -> list:
+    """category_name, year_quarter별 total_business/total_sales 합계 (한 번의 쿼리 결과).
 
-    business_trend_pct는 최근 BUSINESS_WINDOW_QUARTERS개 분기만 사용해 검색 트렌드와
-    비슷한 최신성으로 맞춘 변화율(전체 히스토리를 다 쓰면 장기 구조 변화와 최근
-    모멘텀이 섞인다). qoq_business_change는 바로 전 분기 대비 점포 수 증감(개수)이다.
+    _business_trend_by_category와 _sales_trend_by_category가 예전엔 각자 business_category를
+    쿼리해 같은 테이블을 두 번 집계했다 — 하나로 합쳐 호출자가 한 번만 쿼리하고 공유하게 한다.
     """
-    rows = (
+    return (
         db.query(
             BusinessCategory.category_name,
             BusinessCategory.year_quarter,
             func.sum(BusinessCategory.total_business).label("total_business"),
+            func.sum(BusinessCategory.total_sales).label("total_sales"),
         )
         .filter(
             BusinessCategory.is_deleted.is_(False),
@@ -129,11 +129,28 @@ def _business_trend_by_category(db: Session) -> dict[str, dict]:
         .all()
     )
 
+
+def _is_next_quarter(prev: str, latest: str) -> bool:
+    """latest가 prev 바로 다음 분기인지 확인한다("YYYY-QN" 형식, 연도 넘어가는 경우 포함)."""
+    def to_index(q: str) -> int:
+        year, qtr = q.split("-Q")
+        return int(year) * 4 + int(qtr)
+
+    return to_index(latest) - to_index(prev) == 1
+
+
+def _business_trend_by_category(category_quarter_rows: list) -> dict[str, dict]:
+    """category_name → {business_trend_pct, qoq_business_change} (전체 상권 합산 기준).
+
+    business_trend_pct는 최근 BUSINESS_WINDOW_QUARTERS개 분기만 사용해 검색 트렌드와
+    비슷한 최신성으로 맞춘 변화율(전체 히스토리를 다 쓰면 장기 구조 변화와 최근
+    모멘텀이 섞인다). qoq_business_change는 바로 전 분기 대비 점포 수 증감(개수)이다.
+    """
     by_category: dict[str, list[tuple[str, float]]] = {}
-    for name, quarter, total in rows:
-        if total is None:
+    for name, quarter, total_business, _total_sales in category_quarter_rows:
+        if total_business is None:
             continue
-        by_category.setdefault(name, []).append((quarter, float(total)))
+        by_category.setdefault(name, []).append((quarter, float(total_business)))
 
     result: dict[str, dict] = {}
     for name, series in by_category.items():
@@ -146,6 +163,35 @@ def _business_trend_by_category(db: Session) -> dict[str, dict]:
             "business_trend_pct": trend["trend_pct"],
             "qoq_business_change": round(series[-1][1] - series[-2][1]),
         }
+    return result
+
+
+def _sales_trend_by_category(category_quarter_rows: list) -> dict[str, dict]:
+    """category_name → {qoq_sales_change_pct} (전체 상권 합산 total_sales 기준).
+
+    qoq_business_change와 같은 "바로 전 분기 대비" 기준이지만, 매출은 업종마다
+    절대 규모 편차가 점포 수보다 훨씬 커서 절대 원화 증감 대신 퍼센트 변화로 반환한다.
+    직전 두 항목이 실제로 연속된 분기가 아니면(중간 분기 데이터 누락) 계산하지 않는다 —
+    안 그러면 몇 분기씩 건너뛴 변화가 "바로 전 분기 대비"로 잘못 표시된다.
+    """
+    by_category: dict[str, list[tuple[str, float]]] = {}
+    for name, quarter, _total_business, total_sales in category_quarter_rows:
+        if total_sales is None:
+            continue
+        by_category.setdefault(name, []).append((quarter, float(total_sales)))
+
+    result: dict[str, dict] = {}
+    for name, series in by_category.items():
+        series.sort(key=lambda p: p[0])
+        if len(series) < 2:
+            continue
+        prev_quarter, prev_sales = series[-2]
+        latest_quarter, latest_sales = series[-1]
+        if not _is_next_quarter(prev_quarter, latest_quarter):
+            continue
+        if prev_sales <= 0:
+            continue
+        result[name] = {"qoq_sales_change_pct": round((latest_sales - prev_sales) / prev_sales * 100, 1)}
     return result
 
 
@@ -240,7 +286,7 @@ class CategoryTrendService:
         search_trend = _search_trend_by_category(db, source=source)
 
         # 검색 관심도와 실제 점포 수 증감이 같은 방향인 업종만 "확인된" 추세로 인정한다.
-        business_trend = _business_trend_by_category(db)
+        business_trend = _business_trend_by_category(_category_quarter_totals(db))
         items: list[dict] = []
         for name, search in search_trend.items():
             biz = business_trend.get(name)
@@ -299,18 +345,22 @@ class CategoryTrendService:
             .all()
         )
         search_trend = _search_trend_by_category(db)
-        business_trend = _business_trend_by_category(db)
+        category_quarter_rows = _category_quarter_totals(db)
+        business_trend = _business_trend_by_category(category_quarter_rows)
+        sales_trend = _sales_trend_by_category(category_quarter_rows)
         core_age_group = _core_age_group_by_category(db)
         items: list[dict] = []
         for i, (name, ratio) in enumerate(rows):
             search = search_trend.get(name)
             biz = business_trend.get(name)
+            sales = sales_trend.get(name)
             items.append({
                 "rank": i + 1,
                 "category_name": name,
                 "popularity_index": round(float(ratio), 1),
                 "trend_pct": search["trend_pct"] if search else None,
                 "qoq_business_change": biz["qoq_business_change"] if biz else None,
+                "qoq_sales_change_pct": sales["qoq_sales_change_pct"] if sales else None,
                 "core_age_group": core_age_group.get(name),
             })
         return {"period": latest_period, "anchor": CATEGORY_ANCHOR, "items": items}
@@ -430,11 +480,15 @@ class CategoryTrendService:
         related = related[:top_n]
 
         search_trend = _search_trend_by_category(db, source=source)
-        business_trend = _business_trend_by_category(db)
+        category_quarter_rows = _category_quarter_totals(db)
+        business_trend = _business_trend_by_category(category_quarter_rows)
+        sales_trend = _sales_trend_by_category(category_quarter_rows)
         for item in related:
             search = search_trend.get(item["category_name"])
             biz = business_trend.get(item["category_name"])
+            sales = sales_trend.get(item["category_name"])
             item["trend_pct"] = search["trend_pct"] if search else None
             item["qoq_business_change"] = biz["qoq_business_change"] if biz else None
+            item["qoq_sales_change_pct"] = sales["qoq_sales_change_pct"] if sales else None
 
         return {"category_name": category_name, "related": related}
