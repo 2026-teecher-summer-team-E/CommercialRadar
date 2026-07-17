@@ -46,6 +46,12 @@ class PopularCategoryItem(BaseModel):
     qoq_business_change: int | None = Field(
         None, description="바로 전 분기 대비 전체 상권 합산 점포 수 증감(개). 계산 불가면 null", examples=[320]
     )
+    qoq_sales_change_pct: float | None = Field(
+        None,
+        description="바로 전 분기 대비 전체 상권 합산 추정매출 변화율(%). 음수면 감소. 계산 불가(직전 분기 "
+        "매출이 0 이하이거나 분기 데이터가 2개 미만)면 null",
+        examples=[-8.3],
+    )
     core_age_group: str | None = Field(
         None,
         description="연령대별 검색 비중이 뚜렷이 쏠린 경우의 핵심 수요층. 1위 비중이 기준치"
@@ -75,6 +81,12 @@ class RelatedCategoryItem(BaseModel):
     )
     qoq_business_change: int | None = Field(
         None, description="바로 전 분기 대비 전체 상권 합산 점포 수 증감(개). 계산 불가면 null", examples=[320]
+    )
+    qoq_sales_change_pct: float | None = Field(
+        None,
+        description="바로 전 분기 대비 전체 상권 합산 추정매출 변화율(%). 음수면 감소. 계산 불가(직전 분기 "
+        "매출이 0 이하이거나 분기 데이터가 2개 미만)면 null",
+        examples=[-8.3],
     )
 
 
