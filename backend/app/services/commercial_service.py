@@ -1,11 +1,16 @@
 from fastapi import HTTPException, status
-from sqlalchemy import func
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
 
 from app.models.business_category import BusinessCategory
 from app.models.commercial_district import CommercialDistrict
 from app.models.population_timeseries import PopulationTimeseries
 from app.schemas.commercial import DistrictCompareItem, DistrictCompareResponse
+
+
+def _weighted_avg(rate_col, weight_col):
+    weight_when_present = case((rate_col.isnot(None), weight_col), else_=None)
+    return func.sum(rate_col * weight_col) / func.nullif(func.sum(weight_when_present), 0)
 
 
 class CommercialService:
@@ -45,6 +50,7 @@ class CommercialService:
                 avg_population=population_map.get(did),
                 survival_rate=business_map.get(did, {}).get("survival_rate"),
                 closure_rate=business_map.get(did, {}).get("closure_rate"),
+                open_rate=business_map.get(did, {}).get("open_rate"),
                 district_score=business_map.get(did, {}).get("district_score"),
             )
             for did in district_ids
@@ -123,9 +129,10 @@ class CommercialService:
 
         query = db.query(
             BusinessCategory.commercial_district_id,
-            func.avg(BusinessCategory.survival_rate).label("survival_rate"),
-            func.avg(BusinessCategory.closure_rate).label("closure_rate"),
-            func.avg(BusinessCategory.district_score).label("district_score"),
+            _weighted_avg(BusinessCategory.survival_rate, BusinessCategory.total_business).label("survival_rate"),
+            _weighted_avg(BusinessCategory.closure_rate, BusinessCategory.total_business).label("closure_rate"),
+            _weighted_avg(BusinessCategory.open_rate, BusinessCategory.total_business).label("open_rate"),
+            _weighted_avg(BusinessCategory.district_score, BusinessCategory.total_business).label("district_score"),
         ).filter(
             BusinessCategory.commercial_district_id.in_(district_ids),
             BusinessCategory.year_quarter == year_quarter,
@@ -139,6 +146,7 @@ class CommercialService:
             row.commercial_district_id: {
                 "survival_rate": row.survival_rate,
                 "closure_rate": row.closure_rate,
+                "open_rate": row.open_rate,
                 "district_score": row.district_score,
             }
             for row in rows
