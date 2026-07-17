@@ -78,6 +78,7 @@ def compare_commercial_districts(
         "district_ids": ",".join(str(i) for i in sorted(ids)),
         "year_quarter": year_quarter,
         "category_name": category_name,
+        "schema_version": "weighted-metrics-v1",
     }
     return cached_response(
         "compare", cache_params, lambda: CommercialService.compare(db, ids, year_quarter, category_name)
