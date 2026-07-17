@@ -26,6 +26,7 @@ from app.routers import (
     recent_districts,
     reports,
     sales,
+    simulator,
     users,
     webhooks,
 )
@@ -69,6 +70,7 @@ app.include_router(ping.router, prefix="/api")
 app.include_router(population.router, prefix="/api")
 app.include_router(businesses.router, prefix="/api")
 app.include_router(sales.router, prefix="/api")
+app.include_router(simulator.router, prefix="/api")
 app.include_router(reports.router, prefix="/api")
 app.include_router(forecast.router, prefix="/api")
 app.include_router(analysis.router, prefix="/api")
