@@ -448,15 +448,33 @@ def get_population_heatmap(
     ),
 )
 def get_radar(
+    year_quarter: str | None = Query(None, description="조회 기준 분기", examples=["2025-Q4"]),
+    category_name: str | None = Query(None, description="특정 업종만 필터", examples=["한식음식점"]),
     district_id: int = Path(..., description="commercial_district 테이블의 PK", examples=[42]),
     db: Session = Depends(get_db),
 ):
+    year_quarter = _validate_quarter(year_quarter, "year_quarter")
+
     def _compute():
         _get_existing_district_id(db, district_id)
-        return AnalysisService.get_radar(db, district_id=district_id)
+        return AnalysisService.get_radar(
+            db,
+            district_id=district_id,
+            year_quarter=year_quarter,
+            category_name=category_name,
+        )
 
     # _compute()가 404면 예외를 던지고 그대로 전파되어(캐시 미기록) 정상 동작한다.
-    return cached_response("radar", {"district_id": district_id}, _compute)
+    return cached_response(
+        "radar",
+        {
+            "district_id": district_id,
+            "year_quarter": year_quarter,
+            "category_name": category_name,
+            "score_version": "quarter-category-growth-sqrt-v1",
+        },
+        _compute,
+    )
 
 
 @router.get(
