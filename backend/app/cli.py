@@ -45,6 +45,10 @@ def main(argv: list[str] | None = None) -> int:
 
     sub.add_parser("warm-cache", help="무거운 응답 캐시(geojson 등)를 미리 채우기")
 
+    sub.add_parser(
+        "seed-belts", help="유명 상권 벨트 시딩 (geometry 적재 이후 실행)"
+    )
+
     args = parser.parse_args(argv)
 
     if args.command == "ingest":
@@ -70,6 +74,14 @@ def main(argv: list[str] | None = None) -> int:
         n = warm_cache()
         logger.info("캐시 워밍 완료: %d개 항목", n)
         return 0
+
+    if args.command == "seed-belts":
+        from app.belts.seeder import seed_belts
+        logger.info("상권 벨트 시딩 시작")
+        summary = seed_belts()
+        logger.info("상권 벨트 시딩 결과: %s", summary)
+        # 멤버 0인 벨트가 있으면(geometry 미적재 등) 실패로 간주
+        return 1 if any(n == 0 for n in summary.values()) else 0
 
     return 0
 

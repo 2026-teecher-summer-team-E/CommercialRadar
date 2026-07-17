@@ -1,3 +1,4 @@
+from app.models.belt import Belt, BeltMember
 from app.models.business_category import BusinessCategory
 from app.models.buzz_stats import BuzzStats
 from app.models.category_search_trend import CategorySearchTrend
@@ -15,6 +16,8 @@ from app.models.users import User
 
 __all__ = [
     "CommercialDistrict",
+    "Belt",
+    "BeltMember",
     "BusinessCategory",
     "BuzzStats",
     "CategorySearchTrend",

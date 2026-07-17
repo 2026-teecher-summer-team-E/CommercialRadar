@@ -7,6 +7,7 @@ from app.core.telemetry import setup_telemetry
 from app.routers import (
     admin,
     analysis,
+    belts,
     businesses,
     buzz,
     category_trend,
@@ -57,6 +58,7 @@ app.add_middleware(
 
 app.include_router(commercial_districts.router, prefix="/api")
 app.include_router(commercial.router, prefix="/api")
+app.include_router(belts.router, prefix="/api")
 app.include_router(ping.router, prefix="/api")
 app.include_router(population.router, prefix="/api")
 app.include_router(businesses.router, prefix="/api")
