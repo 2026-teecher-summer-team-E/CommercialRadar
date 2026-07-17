@@ -1,6 +1,11 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from prometheus_fastapi_instrumentator import Instrumentator, metrics
+
+try:
+    from prometheus_fastapi_instrumentator import Instrumentator, metrics
+except ModuleNotFoundError:
+    Instrumentator = None
+    metrics = None
 
 from app.core.config import settings
 from app.core.telemetry import setup_telemetry
@@ -43,9 +48,10 @@ setup_telemetry(app, engine)
 _LATENCY_BUCKETS = (
     0.005, 0.01, 0.025, 0.05, 0.075, 0.1, 0.15, 0.2, 0.3, 0.5, 0.75, 1, 2.5, 5,
 )
-Instrumentator().add(
-    metrics.default(latency_lowr_buckets=_LATENCY_BUCKETS)
-).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
+if Instrumentator is not None and metrics is not None:
+    Instrumentator().add(
+        metrics.default(latency_lowr_buckets=_LATENCY_BUCKETS)
+    ).instrument(app).expose(app, endpoint="/metrics", include_in_schema=False)
 
 app.add_middleware(
     CORSMiddleware,

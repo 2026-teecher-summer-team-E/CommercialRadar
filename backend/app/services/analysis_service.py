@@ -288,7 +288,12 @@ class AnalysisService:
         }
 
     @staticmethod
-    def get_radar(db: Session, district_id: int) -> dict:
+    def get_radar(
+        db: Session,
+        district_id: int,
+        year_quarter: str | None = None,
+        category_name: str | None = None,
+    ) -> dict:
         """상권 강점 프로필 5축을 0~100으로 정규화해 반환한다.
 
         산출식(각 축 0~100, 소수 1자리):
@@ -296,11 +301,11 @@ class AnalysisService:
           - population: 최신 분기 총 유동인구를 RADAR_POPULATION_CAP 대비 비율로 스케일.
           - sales:      최신 분기 total_sales 합계를 log10 스케일(RADAR_SALES_LOG_CAP 기준).
           - stability:  100 - closure_rate(%) (상권 단위 가중평균), 0~100 클램프.
-          - growth:     상권 단위 open_rate(%)를 5배 스케일(개업률은 통상 20% 안팎이라
-                        5배 하면 20% → 100). 0~100 클램프.
+          - growth:     상권 단위 open_rate(%)를 10% 기준 제곱근 스케일로 환산.
+                        낮은 개업률 구간의 차이가 레이더에서 더 잘 보이도록 보정한다.
         기준 분기는 business_category 최신 분기. 데이터가 없으면 해당 축은 0.0.
         """
-        target_quarter = (
+        target_quarter = year_quarter or (
             db.query(func.max(BusinessCategory.year_quarter))
             .filter(
                 BusinessCategory.commercial_district_id == district_id,
@@ -312,33 +317,33 @@ class AnalysisService:
         survival = population = sales = stability = growth = 0.0
 
         if target_quarter is not None:
-            biz = (
-                db.query(
-                    _weighted_avg(BusinessCategory.survival_rate, BusinessCategory.total_business).label(
-                        "survival_rate"
-                    ),
-                    _weighted_avg(BusinessCategory.closure_rate, BusinessCategory.total_business).label(
-                        "closure_rate"
-                    ),
-                    _weighted_avg(BusinessCategory.open_rate, BusinessCategory.total_business).label(
-                        "open_rate"
-                    ),
-                    func.sum(BusinessCategory.total_sales).label("total_sales"),
-                )
-                .filter(
-                    BusinessCategory.commercial_district_id == district_id,
-                    BusinessCategory.year_quarter == target_quarter,
-                    BusinessCategory.is_deleted.is_(False),
-                )
-                .one()
+            biz_query = db.query(
+                _weighted_avg(BusinessCategory.survival_rate, BusinessCategory.total_business).label(
+                    "survival_rate"
+                ),
+                _weighted_avg(BusinessCategory.closure_rate, BusinessCategory.total_business).label(
+                    "closure_rate"
+                ),
+                _weighted_avg(BusinessCategory.open_rate, BusinessCategory.total_business).label(
+                    "open_rate"
+                ),
+                func.sum(BusinessCategory.total_sales).label("total_sales"),
+            ).filter(
+                BusinessCategory.commercial_district_id == district_id,
+                BusinessCategory.year_quarter == target_quarter,
+                BusinessCategory.is_deleted.is_(False),
             )
+            if category_name:
+                biz_query = biz_query.filter(BusinessCategory.category_name == category_name)
+
+            biz = biz_query.one()
 
             if biz.survival_rate is not None:
                 survival = _clamp(float(biz.survival_rate))
             if biz.closure_rate is not None:
                 stability = _clamp(100.0 - float(biz.closure_rate))
             if biz.open_rate is not None:
-                growth = _clamp(float(biz.open_rate) * 5.0)
+                growth = _clamp(math.sqrt(max(float(biz.open_rate), 0.0) / 10.0) * 100.0)
             if biz.total_sales:
                 sales = _clamp(
                     math.log10(float(biz.total_sales) + 1.0) / AnalysisService.RADAR_SALES_LOG_CAP * 100.0
@@ -351,16 +356,7 @@ class AnalysisService:
                     PopulationTimeseries.commercial_district_id == district_id,
                     PopulationTimeseries.dimension == "total",
                     PopulationTimeseries.is_deleted.is_(False),
-                    PopulationTimeseries.year_quarter
-                    == (
-                        db.query(func.max(PopulationTimeseries.year_quarter))
-                        .filter(
-                            PopulationTimeseries.commercial_district_id == district_id,
-                            PopulationTimeseries.dimension == "total",
-                            PopulationTimeseries.is_deleted.is_(False),
-                        )
-                        .scalar_subquery()
-                    ),
+                    PopulationTimeseries.year_quarter == target_quarter,
                 )
                 .scalar()
             )
