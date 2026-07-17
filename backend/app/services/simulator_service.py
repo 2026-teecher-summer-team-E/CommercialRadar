@@ -19,12 +19,21 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models.commercial_district import CommercialDistrict
-from app.schemas.simulator import AxisScore, SalesForecast, SimulateResponse
+from app.schemas.simulator import (
+    AffordableDistrict,
+    AffordableResponse,
+    AxisScore,
+    SalesForecast,
+    SimulateResponse,
+)
 from app.simulator.category_targets import (
     AXIS_WEIGHTS,
     MIN_STORES_FOR_PERCENTILE,
     target_ages_for,
 )
+
+# 임대료 상가유형 허용값(rent_stats.floor_type).
+ALLOWED_FLOOR_TYPES = ("소규모", "중대형", "집합")
 
 
 def _pctile(sorted_vals: list[float], x: float) -> float | None:
@@ -235,6 +244,86 @@ class SimulatorService:
             key="rent", label="임대료 부담",
             score=score, value=f"{float(row):,.0f} 천원/㎡",
             note="임대료 데이터는 일부 상권(약 14%)만 제공",
+        )
+
+    @staticmethod
+    def affordable_districts(
+        db: Session,
+        monthly_budget: int,
+        area_sqm: float,
+        floor_type: str,
+        limit: int,
+    ) -> AffordableResponse:
+        """월 임대료 예산 이하로 창업 가능한 상권 리스트(추정 월 임대료 오름차순).
+
+        추정 월 임대료 = avg_rent_per_sqm(천원/㎡) × 1000 × area_sqm.
+        상권별 최신 분기 임대료를 쓴다. 임대료 데이터가 있는 상권만 대상(~14%).
+        floor_type="전체"면 상가유형을 가리지 않고 상권별 최신·대표(소규모>중대형>집합) 임대료를 쓴다.
+        """
+        all_types = floor_type in ("전체", "", None)
+        if not all_types and floor_type not in ALLOWED_FLOOR_TYPES:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"floor_type은 전체, {', '.join(ALLOWED_FLOOR_TYPES)} 중 하나여야 합니다",
+            )
+
+        # 전체: 상권별로 최신 분기 → 상가유형 우선순위(소규모>중대형>집합) 1행. 특정 유형: 해당 유형만.
+        floor_filter = "" if all_types else "rs.floor_type = :floor AND "
+        floor_order = (
+            ", CASE rs.floor_type WHEN '소규모' THEN 0 WHEN '중대형' THEN 1 ELSE 2 END" if all_types else ""
+        )
+        params = {} if all_types else {"floor": floor_type}
+
+        rows = db.execute(
+            text(
+                "SELECT DISTINCT ON (rs.commercial_district_id) "
+                "  rs.commercial_district_id AS did, rs.avg_rent_per_sqm AS rent, rs.year_quarter AS yq, "
+                "  rs.floor_type AS floor_type, "
+                "  cd.district_name, cd.gu_name, cd.type_name, cd.avg_population, sc.district_score "
+                "FROM rent_stats rs "
+                "JOIN commercial_district cd ON cd.id = rs.commercial_district_id AND cd.is_deleted = false "
+                "LEFT JOIN ( "
+                "  SELECT bc.commercial_district_id AS did, AVG(bc.district_score) AS district_score "
+                "  FROM business_category bc "
+                "  JOIN ( "
+                "    SELECT commercial_district_id, MAX(year_quarter) AS yq FROM business_category "
+                "    WHERE is_deleted = false GROUP BY commercial_district_id "
+                "  ) lb ON lb.commercial_district_id = bc.commercial_district_id AND lb.yq = bc.year_quarter "
+                "  WHERE bc.is_deleted = false GROUP BY bc.commercial_district_id "
+                ") sc ON sc.did = rs.commercial_district_id "
+                f"WHERE {floor_filter}rs.avg_rent_per_sqm IS NOT NULL AND rs.is_deleted = false "
+                f"ORDER BY rs.commercial_district_id, rs.year_quarter DESC{floor_order}"
+            ),
+            params,
+        ).all()
+
+        items: list[AffordableDistrict] = []
+        for r in rows:
+            est = round(float(r.rent) * 1000 * area_sqm)
+            if est > monthly_budget:
+                continue
+            items.append(
+                AffordableDistrict(
+                    district_id=r.did,
+                    district_name=r.district_name,
+                    gu_name=r.gu_name,
+                    type_name=r.type_name,
+                    floor_type=r.floor_type,
+                    year_quarter=r.yq,
+                    rent_per_sqm=round(float(r.rent), 1),
+                    est_monthly_rent=est,
+                    avg_population=r.avg_population,
+                    district_score=round(float(r.district_score), 1) if r.district_score is not None else None,
+                )
+            )
+
+        items.sort(key=lambda x: x.est_monthly_rent)
+        return AffordableResponse(
+            monthly_budget=monthly_budget,
+            area_sqm=area_sqm,
+            floor_type=floor_type,
+            count=len(items),
+            districts=items[:limit],
         )
 
     @staticmethod
