@@ -284,8 +284,13 @@ class SimulatorService:
             ", CASE rs.floor_type WHEN '소규모' THEN 0 WHEN '중대형' THEN 1 ELSE 2 END" if all_types else ""
         )
         params = {} if all_types else {"floor": floor_type}
-        if region and region.strip():
+        if region is not None:
             normalized_region = region.strip()
+            if not normalized_region:
+                raise HTTPException(
+                    status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                    detail="region은 공백일 수 없습니다",
+                )
             region_terms = REGION_ALIASES.get(normalized_region, (normalized_region,))
             region_clauses = []
             for index, term in enumerate(region_terms):
