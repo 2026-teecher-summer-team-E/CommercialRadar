@@ -17,16 +17,19 @@
   5) fuzzy 폴백 (1~4 실패 시):
      5a) 토큰 분할 접두어 매칭 — 복합명 "신촌/이대"를 토큰으로 쪼개 서울 상권명이
          그 토큰으로 시작하면 매칭 (예: "신촌"→"신촌역", "합정"→"합정역")
-     5b) 트라이그램 유사도 매칭 — 도로명 "강남대로"→"강남역"(pg_trgm 방식, 0.29)
+     5b) 트라이그램 유사도 매칭 — 도로명 표기 변형을 pg_trgm 방식 유사도로 매칭
+         (예: "역삼대로"→"역삼역"). 최고 점수 후보가 유일할 때만 채택하고,
+         서로 다른 상권이 동점이면 모호하므로 스킵한다.
   하나의 부동산원 상권이 여러 서울 상권에 매칭되면 각각 rent row를 생성한다.
   미매칭 상권은 스킵 (해당 서울 상권은 임대료 null로 남음 — 의도된 동작).
 
 실측 매칭 결과 (최신 분기 202601 서울 59개 상권):
   fuzzy 도입 전: 4단계 매칭으로 자동 50/59, 미매칭 9개를 MANUAL_MAP 수동 처리.
-  fuzzy 도입 후: 미매칭 9개 중 6개를 토큰+트라이그램으로 자동 매칭 → 자동 56/59(≈95%).
+  fuzzy 도입 후: 미매칭 9개 중 복합명 5개를 토큰 분할로 자동 매칭 → 자동 55/59(≈93%).
     · 토큰 분할: 동교/연남, 신촌/이대, 홍대/합정, 독산/시흥, 잠실/송파 (복합명 5개)
-    · 트라이그램: 강남대로 → 강남역
-    · 여전히 스킵(3개): 도산대로·테헤란로·숙명여대 (유사도 < 0.25 → MANUAL_MAP 의도적 스킵)
+    · MANUAL_MAP 유지(도로명 4개): 강남대로 → 강남역(3120189) 대표 매핑,
+      도산대로·테헤란로·숙명여대는 신뢰할 후보가 없어 의도적 스킵.
+      (실측 최고 유사도: 도산대로 0.20, 테헤란로 0.06, 숙명여대 0.11 < 임계값 0.25)
 """
 
 import logging
@@ -153,7 +156,8 @@ def _fuzzy_match_ids(
         그 토큰으로 "시작"하면 매칭한다(예: "신촌"→"신촌역", "합정"→"합정역").
         접두어로 제한해 "이대"가 "어린이대공원역"에 걸리는 과매칭을 막는다.
     5b) 토큰 매칭도 없으면 트라이그램 최고 유사도 상권을 후보로 삼아,
-        임계값(TRIGRAM_THRESHOLD) 이상이면 매칭한다(예: "강남대로"→"강남역" 0.29).
+        후보가 유일하고 임계값(TRIGRAM_THRESHOLD) 이상이면 매칭한다
+        (예: "역삼대로"→"역삼역"). 서로 다른 상권이 최고 점수로 동점이면 스킵한다.
     """
     seen: set[int] = set()
     result_ids: list[int] = []
@@ -174,17 +178,20 @@ def _fuzzy_match_ids(
         return result_ids
 
     # 5b. 트라이그램 최고 유사도 매칭 (도로명·표기 변형)
+    # 서로 다른 상권이 최고 점수로 동점이면 어느 쪽도 신뢰할 수 없으므로 스킵한다
+    # (동점을 모두 매칭하면 모호한 결과가 여러 상권에 잘못 적재된다).
     best_score = 0.0
-    best_ids: list[list[int]] = []
+    best_ids: list[int] | None = None
+    ambiguous = False
     for district_name, ids in name_to_ids.items():
         score = trigram_similarity(reb_norm, district_name)
         if score > best_score:
-            best_score, best_ids = score, [ids]
+            best_score, best_ids = score, ids
+            ambiguous = False
         elif score == best_score and score > 0:
-            best_ids.append(ids)
-    if best_score >= TRIGRAM_THRESHOLD:
-        for ids in best_ids:
-            _collect(ids)
+            ambiguous = True
+    if best_score >= TRIGRAM_THRESHOLD and best_ids is not None and not ambiguous:
+        _collect(best_ids)
 
     return result_ids
 
@@ -204,7 +211,7 @@ def match_district_ids(
       4) 서울 이름 ⊆ 부동산원 이름, 최소 3자 (예: "신촌" ⊆ "신촌/이대").
       5) fuzzy 폴백 (2~4 모두 실패 시):
          5a) 토큰 분할 접두어 매칭 — 복합명 "신촌/이대" → "신촌역", "이대역".
-         5b) 트라이그램 유사도 매칭 — 도로명 "강남대로" → "강남역"(0.29).
+         5b) 트라이그램 유사도 매칭 — 도로명 "역삼대로" → "역삼역"(동점이면 스킵).
 
     Args:
         reb_name: 부동산원 CLS_NM (예: "명동").
