@@ -35,6 +35,15 @@ from app.simulator.category_targets import (
 # 임대료 상가유형 허용값(rent_stats.floor_type).
 ALLOWED_FLOOR_TYPES = ("소규모", "중대형", "집합")
 
+# 일상적으로 부르는 대표 지역명을 실제 데이터의 자치구·상권명 검색어로 확장한다.
+# 임대료 데이터가 일부 상권에만 있어, 대표 지역명은 인접 생활권까지 묶어 여러 후보를 보여준다.
+REGION_ALIASES = {
+    "홍대": ("마포구",),
+    "홍대입구": ("마포구",),
+    "강남": ("강남구", "강남역", "신논현", "논현", "역삼"),
+    "강남역": ("강남구", "강남역", "신논현", "논현", "역삼"),
+}
+
 
 def _pctile(sorted_vals: list[float], x: float) -> float | None:
     """x가 sorted_vals(오름차순)에서 차지하는 백분위(0~100). 클수록 상위."""
@@ -253,6 +262,7 @@ class SimulatorService:
         area_sqm: float,
         floor_type: str,
         limit: int,
+        region: str | None = None,
     ) -> AffordableResponse:
         """월 임대료 예산 이하로 창업 가능한 상권 리스트(추정 월 임대료 오름차순).
 
@@ -269,10 +279,23 @@ class SimulatorService:
 
         # 전체: 상권별로 최신 분기 → 상가유형 우선순위(소규모>중대형>집합) 1행. 특정 유형: 해당 유형만.
         floor_filter = "" if all_types else "rs.floor_type = :floor AND "
+        region_filter = ""
         floor_order = (
             ", CASE rs.floor_type WHEN '소규모' THEN 0 WHEN '중대형' THEN 1 ELSE 2 END" if all_types else ""
         )
         params = {} if all_types else {"floor": floor_type}
+        if region and region.strip():
+            normalized_region = region.strip()
+            region_terms = REGION_ALIASES.get(normalized_region, (normalized_region,))
+            region_clauses = []
+            for index, term in enumerate(region_terms):
+                param_name = f"region_{index}"
+                region_clauses.append(
+                    f"(cd.district_name ILIKE :{param_name} OR cd.gu_name ILIKE :{param_name} "
+                    f"OR cd.dong_name ILIKE :{param_name})"
+                )
+                params[param_name] = f"%{term}%"
+            region_filter = f"({' OR '.join(region_clauses)}) AND "
 
         rows = db.execute(
             text(
@@ -291,7 +314,7 @@ class SimulatorService:
                 "  ) lb ON lb.commercial_district_id = bc.commercial_district_id AND lb.yq = bc.year_quarter "
                 "  WHERE bc.is_deleted = false GROUP BY bc.commercial_district_id "
                 ") sc ON sc.did = rs.commercial_district_id "
-                f"WHERE {floor_filter}rs.avg_rent_per_sqm IS NOT NULL AND rs.is_deleted = false "
+                f"WHERE {floor_filter}{region_filter}rs.avg_rent_per_sqm IS NOT NULL AND rs.is_deleted = false "
                 f"ORDER BY rs.commercial_district_id, rs.year_quarter DESC{floor_order}"
             ),
             params,
