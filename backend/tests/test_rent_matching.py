@@ -77,6 +77,16 @@ def test_fuzzy_below_threshold_returns_empty():
     assert ids == []
 
 
+def test_fuzzy_trigram_tied_candidates_returns_empty():
+    # 서로 다른 상권이 최고 유사도로 동점이면 모호하므로 어느 쪽도 매칭하지 않는다
+    # (동점을 모두 매칭하면 임대료 행이 여러 상권에 잘못 적재된다).
+    # "서초대로" ↔ "서초역"·"서초길"이 둘 다 0.29(임계값 이상)로 동점이다.
+    # (MANUAL_MAP에 없는 이름이라 fuzzy 폴백까지 도달한다.)
+    name_to_ids = {"서초역": [1], "서초길": [2]}
+    ids = rt.match_district_ids("서초대로", name_to_ids, {})
+    assert ids == []
+
+
 def test_fuzzy_not_triggered_when_substring_matches():
     # 부분 매칭이 성공하면 fuzzy 폴백은 돌지 않는다 (기존 동작 보존)
     name_to_ids = {"명동역": [1], "명동거리": [2], "종로": [3]}
