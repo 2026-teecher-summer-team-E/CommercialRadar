@@ -23,16 +23,19 @@ logger = logging.getLogger("belts.seeder")
 def _resolve_members(db: Session, seed: BeltSeed) -> tuple[set[int], set[int]]:
     """(앵커 상권 id 집합, 전체 멤버 id 집합)을 반환한다.
 
-    전체 멤버 = 앵커 ∪ 앵커에 ST_Intersects로 맞닿은 상권.
+    전체 멤버 = (앵커 ∪ 앵커에 ST_Intersects로 맞닿은 상권) - exclude.
+    exclude는 앵커 오매칭뿐 아니라 큐레이션상 제외하고 싶은 이웃 상권에도 적용된다.
     """
     patterns = [f"%{kw}%" for kw in seed["keywords"]]
+    exclude_names = seed.get("exclude", [])
 
     anchor_rows = db.execute(
         text(
             "SELECT id FROM commercial_district "
-            "WHERE geometry IS NOT NULL AND district_name LIKE ANY(:patterns)"
+            "WHERE geometry IS NOT NULL AND district_name LIKE ANY(:patterns) "
+            "AND NOT (district_name = ANY(:exclude_names))"
         ),
-        {"patterns": patterns},
+        {"patterns": patterns, "exclude_names": exclude_names},
     ).all()
     anchor_ids = {r[0] for r in anchor_rows}
     if not anchor_ids:
@@ -48,6 +51,19 @@ def _resolve_members(db: Session, seed: BeltSeed) -> tuple[set[int], set[int]]:
         {"anchor_ids": list(anchor_ids)},
     ).all()
     member_ids = anchor_ids | {r[0] for r in neighbor_rows}
+
+    if exclude_names and member_ids:
+        excluded_rows = db.execute(
+            text(
+                "SELECT id FROM commercial_district "
+                "WHERE id = ANY(:ids) AND district_name = ANY(:exclude_names)"
+            ),
+            {"ids": list(member_ids), "exclude_names": exclude_names},
+        ).all()
+        excluded_ids = {r[0] for r in excluded_rows}
+        anchor_ids -= excluded_ids
+        member_ids -= excluded_ids
+
     return anchor_ids, member_ids
 
 
