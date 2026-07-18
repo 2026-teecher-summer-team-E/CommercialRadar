@@ -27,4 +27,4 @@ def affordable_districts(
     db: Session = Depends(get_db),
 ):
     """월 임대료 예산으로 창업 가능한 상권 리스트업(추정 월 임대료 오름차순). 임대료 데이터 보유 상권(~14%)만."""
-    return SimulatorService.affordable_districts(db, monthly_budget, area_sqm, floor_type, limit)
+    return SimulatorService.affordable_districts(db, monthly_budget, area_sqm, floor_type, limit, region)
