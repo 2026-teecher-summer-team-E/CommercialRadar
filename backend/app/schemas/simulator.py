@@ -58,5 +58,6 @@ class AffordableResponse(BaseModel):
     monthly_budget: int            # 입력한 월 임대료 예산(원)
     area_sqm: float                # 가정 점포 면적(㎡)
     floor_type: str
+    category_name: str | None = None  # 업종 선택 시 점수 기준 업종(없으면 전 업종 평균)
     count: int
     districts: list[AffordableDistrict]  # 추정 월 임대료 오름차순

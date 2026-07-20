@@ -24,8 +24,14 @@ def affordable_districts(
     area_sqm: float = Query(33.0, gt=0, le=1000, description="가정 점포 면적(㎡). 기본 33㎡(약 10평)"),
     floor_type: str = Query("전체", description="상가유형: 전체 | 소규모 | 중대형 | 집합"),
     region: str | None = Query(None, min_length=1, max_length=100, description="상권명·자치구·행정동 지역 검색어"),
+    category_name: str | None = Query(
+        None, min_length=1, max_length=100,
+        description="업종명(business_category.category_name). 주면 그 업종 점수로 정렬하고 해당 업종 없는 상권은 제외",
+    ),
     limit: int = Query(30, ge=1, le=2000, description="최대 반환 개수"),
     db: Session = Depends(get_db),
 ):
     """월 임대료 예산으로 창업 가능한 상권 리스트업(추정 월 임대료 오름차순). 임대료 데이터 보유 상권(~14%)만."""
-    return SimulatorService.affordable_districts(db, monthly_budget, area_sqm, floor_type, limit, region)
+    return SimulatorService.affordable_districts(
+        db, monthly_budget, area_sqm, floor_type, limit, region, category_name
+    )

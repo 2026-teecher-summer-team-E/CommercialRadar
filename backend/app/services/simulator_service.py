@@ -263,12 +263,16 @@ class SimulatorService:
         floor_type: str,
         limit: int,
         region: str | None = None,
+        category_name: str | None = None,
     ) -> AffordableResponse:
         """월 임대료 예산 이하로 창업 가능한 상권 리스트(추정 월 임대료 오름차순).
 
         추정 월 임대료 = avg_rent_per_sqm(천원/㎡) × 1000 × area_sqm.
         상권별 최신 분기 임대료를 쓴다. 임대료 데이터가 있는 상권만 대상(~14%).
         floor_type="전체"면 상가유형을 가리지 않고 상권별 최신·대표(소규모>중대형>집합) 임대료를 쓴다.
+
+        category_name이 주어지면 district_score를 '해당 업종'의 점수(그 업종 최신 분기)로
+        계산하고, 그 업종 표본이 없는 상권은 제외한다. 없으면 전 업종 평균 점수를 쓴다.
         """
         all_types = floor_type in ("전체", "", None)
         if not all_types and floor_type not in ALLOWED_FLOOR_TYPES:
@@ -302,6 +306,18 @@ class SimulatorService:
                 params[param_name] = f"%{term}%"
             region_filter = f"({' OR '.join(region_clauses)}) AND "
 
+        # 업종 선택 시 그 업종의 점수(그 업종 최신 분기)를, 아니면 전 업종 평균 점수를 district_score로 쓴다.
+        normalized_category = category_name.strip() if category_name is not None else None
+        if category_name is not None and not normalized_category:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail="category_name은 공백일 수 없습니다",
+            )
+        cat_filter = ""
+        if normalized_category:
+            cat_filter = "AND bc.category_name = :cat "
+            params["cat"] = normalized_category
+
         rows = db.execute(
             text(
                 "SELECT DISTINCT ON (rs.commercial_district_id) "
@@ -315,9 +331,9 @@ class SimulatorService:
                 "  FROM business_category bc "
                 "  JOIN ( "
                 "    SELECT commercial_district_id, MAX(year_quarter) AS yq FROM business_category "
-                "    WHERE is_deleted = false GROUP BY commercial_district_id "
+                f"    WHERE is_deleted = false {cat_filter.replace('bc.', '')}GROUP BY commercial_district_id "
                 "  ) lb ON lb.commercial_district_id = bc.commercial_district_id AND lb.yq = bc.year_quarter "
-                "  WHERE bc.is_deleted = false GROUP BY bc.commercial_district_id "
+                f"  WHERE bc.is_deleted = false {cat_filter}GROUP BY bc.commercial_district_id "
                 ") sc ON sc.did = rs.commercial_district_id "
                 f"WHERE {floor_filter}{region_filter}rs.avg_rent_per_sqm IS NOT NULL AND rs.is_deleted = false "
                 f"ORDER BY rs.commercial_district_id, rs.year_quarter DESC{floor_order}"
@@ -327,6 +343,9 @@ class SimulatorService:
 
         items: list[AffordableDistrict] = []
         for r in rows:
+            # 업종을 골랐는데 그 업종 표본이 없는 상권은 제외(점수를 낼 수 없어 오해 방지).
+            if normalized_category and r.district_score is None:
+                continue
             est = round(float(r.rent) * 1000 * area_sqm)
             if est > monthly_budget:
                 continue
@@ -350,6 +369,7 @@ class SimulatorService:
             monthly_budget=monthly_budget,
             area_sqm=area_sqm,
             floor_type=floor_type,
+            category_name=normalized_category,
             count=len(items),
             districts=items[:limit],
         )
