@@ -50,6 +50,32 @@ _TOKEN_SEP = re.compile(r"[/,·]")
 
 
 # ──────────────────────────────────────────────────────────────────────────────
+# 시도(市道) 코드 매핑 — 지역-스코프 매칭용
+# 부동산원 CLS_FULLNM 첫 세그먼트(시도 단축명) → 행정 시도 코드 2자리.
+# 상권(commercial_district) 쪽은 signgu_code 앞 2자리가 시도 코드다.
+# 주의: "서울"→"11"만 실데이터로 검증됨. 나머지는 표준 시도 코드이며,
+#       실제 전국 데이터 적재 시 signgu_code와 대조해 검증한다(스펙 비목표).
+# ──────────────────────────────────────────────────────────────────────────────
+SIDO_NAME_TO_CODE: dict[str, str] = {
+    "서울": "11", "부산": "26", "대구": "27", "인천": "28", "광주": "29",
+    "대전": "30", "울산": "31", "세종": "36", "경기": "41", "강원": "42",
+    "충북": "43", "충남": "44", "전북": "45", "전남": "46", "경북": "47",
+    "경남": "48", "제주": "50",
+}
+
+
+def extract_sido_code(cls_fullnm: str) -> str | None:
+    """CLS_FULLNM 첫 세그먼트(시도명) → 시도 코드 2자리. 알 수 없으면 None.
+
+    예: "서울>도심>명동" → "11", "부산>중부>남포동" → "26".
+    """
+    if not cls_fullnm:
+        return None
+    first = cls_fullnm.split(">")[0].strip()
+    return SIDO_NAME_TO_CODE.get(first)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
 # 수동 매핑 오버라이드
 # 키: 부동산원 CLS_NM, 값: 서울 상권분석서비스 external_code(TRDAR_CD) 목록.
 # 빈 리스트 = 매칭 없음(의도적 스킵). 올바른 코드를 추가하면 자동 반영된다.
@@ -88,18 +114,22 @@ class RentRowIn(BaseModel):
 # 순수 변환 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
-def is_seoul_terminal(cls_fullnm: str) -> bool:
-    """서울 말단 상권 여부를 반환한다.
+# 현재 처리 대상 시도 코드. 확장 시 여기에 시도 코드를 추가한다(예: {"11", "26"}).
+TARGET_SIDO_CODES: set[str] = {"11"}  # 서울
 
-    조건: CLS_FULLNM이 "서울"로 시작하고 ">" 구분 세그먼트가 3개 이상.
+
+def is_terminal(cls_fullnm: str, target_sido_codes: set[str]) -> bool:
+    """대상 시도의 말단 상권 여부를 반환한다.
+
+    조건: CLS_FULLNM 첫 세그먼트의 시도 코드가 target_sido_codes에 있고,
+    ">" 구분 세그먼트가 3개 이상(시도>권역>상권).
     예:
-      "서울>도심>명동"     → True  (서울>권역>상권)
-      "서울>도심"          → False (권역 집계, 스킵)
-      "서울"               → False (시도 집계, 스킵)
-      "서울>기타"          → False (기타 권역 집계, 스킵)
-      "광주>금남로/충장로" → False (서울 아님)
+      is_terminal("서울>도심>명동", {"11"})   → True
+      is_terminal("서울>도심", {"11"})        → False (권역 집계)
+      is_terminal("부산>중부>남포동", {"11"}) → False (대상 시도 아님)
     """
-    if not cls_fullnm.startswith("서울"):
+    sido = extract_sido_code(cls_fullnm)
+    if sido is None or sido not in target_sido_codes:
         return False
     return len(cls_fullnm.split(">")) >= 3
 
@@ -255,7 +285,7 @@ def transform_record(
     raw: dict,
     floor_type: str,
     min_wrttime: str,
-    name_to_ids: dict[str, list[int]],
+    name_to_ids: dict[str, dict[str, list[int]]],
     code_to_id: dict[str, int],
 ) -> list[dict]:
     """raw row 1건 → upsert용 dict 목록 반환.
@@ -269,7 +299,8 @@ def transform_record(
         raw: R-ONE API raw row dict.
         floor_type: 상가유형 ("소규모" / "중대형" / "집합").
         min_wrttime: 백필 시작 기준시점 "YYYYQQ" (이 값 이상만 처리, 예: "202101").
-        name_to_ids: {district_name: [id, ...]} — load_district_name_map(db) 결과.
+        name_to_ids: {시도코드: {district_name: [id, ...]}} — load_district_name_map(db) 결과.
+                     transform은 CLS_FULLNM 시도로 해당 버킷만 골라 매칭한다.
         code_to_id: {external_code: id} — load_trdar_map(db) 결과 (MANUAL_MAP용).
 
     Returns:
@@ -285,8 +316,8 @@ def transform_record(
     if parsed.wrttime_idtfr_id < min_wrttime:
         return []
 
-    # 서울 말단 상권만 처리
-    if not is_seoul_terminal(parsed.cls_fullnm):
+    # 대상 시도의 말단 상권만 처리
+    if not is_terminal(parsed.cls_fullnm, TARGET_SIDO_CODES):
         return []
 
     # 임대료 항목만 처리 (ITM_NM에 다른 항목이 있을 경우 대비)
@@ -295,12 +326,14 @@ def transform_record(
 
     year_quarter = wrttime_to_year_quarter(parsed.wrttime_idtfr_id)
 
-    # 서울 상권 이름 매칭
-    matched_ids = match_district_ids(parsed.cls_nm, name_to_ids, code_to_id)
+    # 시도로 후보를 좁힌 뒤 이름 매칭 (동명이지 충돌 차단)
+    sido_code = extract_sido_code(parsed.cls_fullnm)
+    scoped_names = name_to_ids.get(sido_code, {})
+    matched_ids = match_district_ids(parsed.cls_nm, scoped_names, code_to_id)
     if not matched_ids:
         logger.debug(
-            "부동산원 상권 '%s' (FULLNM=%s, floor_type=%s) 서울 상권 미매칭, 스킵",
-            parsed.cls_nm, parsed.cls_fullnm, floor_type,
+            "부동산원 상권 '%s' (FULLNM=%s, 시도=%s, floor_type=%s) 미매칭, 스킵",
+            parsed.cls_nm, parsed.cls_fullnm, sido_code, floor_type,
         )
         return []
 

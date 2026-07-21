@@ -88,24 +88,45 @@ def load_trdar_map(db: Session) -> dict[str, int]:
     return mapping
 
 
-def load_district_name_map(db: Session) -> dict[str, list[int]]:
-    """commercial_district 테이블에서 {district_name: [id, ...]} 매핑을 로드한다.
+def bucket_names_by_sido(
+    rows: list[tuple[str, int, str | None]],
+) -> dict[str, dict[str, list[int]]]:
+    """(district_name, id, signgu_code) 행들을 {시도코드: {상권명: [id, ...]}}로 버킷팅.
+
+    signgu_code 앞 2자리를 시도 코드로 쓴다. signgu_code가 None이거나 2자리 미만이면
+    시도를 특정할 수 없으므로 제외한다.
+    """
+    result: dict[str, dict[str, list[int]]] = defaultdict(lambda: defaultdict(list))
+    for district_name, id_, signgu_code in rows:
+        if not signgu_code or len(signgu_code) < 2:
+            continue
+        sido = signgu_code[:2]
+        result[sido][district_name].append(id_)
+    return {sido: dict(names) for sido, names in result.items()}
+
+
+def load_district_name_map(db: Session) -> dict[str, dict[str, list[int]]]:
+    """commercial_district에서 {시도코드: {district_name: [id, ...]}} 매핑을 로드한다.
 
     부동산원 R-ONE 상권명(CLS_NM) → 서울 상권 DB id 이름 매칭에 사용한다.
-    같은 district_name을 가진 상권이 드물게 여러 개일 수 있으므로 id 리스트로 반환한다.
+    시도(signgu_code 앞 2자리)로 먼저 버킷팅해 동명이지(시도 간 동일 상권명) 충돌을
+    구조적으로 차단한다. 같은 시도 안에서 같은 상권명이 여러 개면 id 리스트로 반환한다.
 
-    rent_stats 파이프라인(seoul_rent)이 상권명 기반 매칭에 사용한다.
-    서울 상권 코드(TRDAR_CD)가 부동산원 상권 코드(CLS_ID)와 달라 이름 매칭이 필요하다.
+    rent_stats 파이프라인(seoul_rent)이 시도-스코프 이름 매칭에 사용한다.
     """
     rows = db.execute(
-        select(CommercialDistrict.district_name, CommercialDistrict.id)
+        select(
+            CommercialDistrict.district_name,
+            CommercialDistrict.id,
+            CommercialDistrict.signgu_code,
+        )
     ).all()
-    mapping: dict[str, list[int]] = defaultdict(list)
-    for district_name, id_ in rows:
-        mapping[district_name].append(id_)
-    result = dict(mapping)
-    logger.info("상권명 매핑 로드: %d개 상권명", len(result))
-    return result
+    mapping = bucket_names_by_sido([(r[0], r[1], r[2]) for r in rows])
+    logger.info(
+        "상권명 매핑 로드: %d개 시도, 총 %d개 상권명",
+        len(mapping), sum(len(v) for v in mapping.values()),
+    )
+    return mapping
 
 
 def load_adstrd_map(db: Session) -> dict[str, list[int]]:
