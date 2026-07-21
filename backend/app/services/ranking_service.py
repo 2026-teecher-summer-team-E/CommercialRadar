@@ -26,36 +26,71 @@ _SORT_FIELDS = {
 }
 
 
-def _compute_metrics(db: Session) -> list[dict]:
+def _compute_metrics(db: Session, category_name: str | None = None) -> list[dict]:
     """전 상권의 최신 분기 종합점수·생존율 + 유동인구. 순위 계산의 원천 데이터.
 
     각 상권의 '최신 분기'는 상권마다 다를 수 있어 상관 서브쿼리(latest)로 구한다
     (상세 엔드포인트의 _latest_business_quarter와 같은 기준). business_category
     행이 없는 상권은 결과에서 빠진다(=순위 없음, 프론트가 '지표없음'으로 처리).
+
+    category_name을 주면 전 업종 평균이 아니라 그 업종 한 줄(district_score/survival_rate)만
+    쓴다. 이때 '최신 분기'도 그 업종 기준으로 다시 구한다 — 업종마다 데이터가 채워진
+    최신 분기가 다를 수 있어(예: 어떤 상권은 이번 분기에 특정 업종 표본이 없을 수 있음),
+    전체 평균용 latest를 그대로 쓰면 해당 업종 행과 분기가 안 맞아 값이 비게 된다.
+    (commercial_district_id, category_name, year_quarter)에 유니크 제약이 있어
+    업종을 고정하면 상권당 정확히 한 행만 남으므로 AVG 없이 그 값을 그대로 쓴다.
     """
-    sql = text(
-        """
-        WITH latest AS (
-            SELECT commercial_district_id AS did, MAX(year_quarter) AS yq
-            FROM business_category
-            WHERE is_deleted = false
-            GROUP BY commercial_district_id
+    if category_name is None:
+        sql = text(
+            """
+            WITH latest AS (
+                SELECT commercial_district_id AS did, MAX(year_quarter) AS yq
+                FROM business_category
+                WHERE is_deleted = false
+                GROUP BY commercial_district_id
+            )
+            SELECT cd.id, cd.district_name, cd.gu_name, cd.type_name,
+                   cd.avg_population,
+                   AVG(bc.district_score) AS district_score,
+                   AVG(bc.survival_rate)  AS survival_rate
+            FROM commercial_district cd
+            JOIN latest l ON l.did = cd.id
+            JOIN business_category bc
+              ON bc.commercial_district_id = cd.id
+             AND bc.year_quarter = l.yq
+             AND bc.is_deleted = false
+            WHERE cd.is_deleted = false
+            GROUP BY cd.id, cd.district_name, cd.gu_name, cd.type_name, cd.avg_population
+            ORDER BY cd.id
+            """
         )
-        SELECT cd.id, cd.district_name, cd.gu_name, cd.type_name,
-               cd.avg_population,
-               AVG(bc.district_score) AS district_score,
-               AVG(bc.survival_rate)  AS survival_rate
-        FROM commercial_district cd
-        JOIN latest l ON l.did = cd.id
-        JOIN business_category bc
-          ON bc.commercial_district_id = cd.id
-         AND bc.year_quarter = l.yq
-         AND bc.is_deleted = false
-        WHERE cd.is_deleted = false
-        GROUP BY cd.id, cd.district_name, cd.gu_name, cd.type_name, cd.avg_population
-        ORDER BY cd.id
-        """
-    )
+        params = {}
+    else:
+        sql = text(
+            """
+            WITH latest AS (
+                SELECT commercial_district_id AS did, MAX(year_quarter) AS yq
+                FROM business_category
+                WHERE is_deleted = false
+                  AND category_name = :category_name
+                GROUP BY commercial_district_id
+            )
+            SELECT cd.id, cd.district_name, cd.gu_name, cd.type_name,
+                   cd.avg_population,
+                   bc.district_score AS district_score,
+                   bc.survival_rate  AS survival_rate
+            FROM commercial_district cd
+            JOIN latest l ON l.did = cd.id
+            JOIN business_category bc
+              ON bc.commercial_district_id = cd.id
+             AND bc.year_quarter = l.yq
+             AND bc.category_name = :category_name
+             AND bc.is_deleted = false
+            WHERE cd.is_deleted = false
+            ORDER BY cd.id
+            """
+        )
+        params = {"category_name": category_name}
 
     def _f(v):
         return float(v) if v is not None else None
@@ -70,25 +105,26 @@ def _compute_metrics(db: Session) -> list[dict]:
             "district_score": _f(r["district_score"]),
             "survival_rate": _f(r["survival_rate"]),
         }
-        for r in db.execute(sql).mappings().all()
+        for r in db.execute(sql, params).mappings().all()
     ]
 
 
-def _metrics_cached(db: Session, redis_client: Redis | None) -> list[dict]:
-    """_compute_metrics 결과를 Redis에 TTL 캐싱한다 (없거나 장애 시 직접 연산 폴백)."""
+def _metrics_cached(db: Session, redis_client: Redis | None, category_name: str | None = None) -> list[dict]:
+    """_compute_metrics 결과를 Redis에 TTL 캐싱한다 (없거나 장애 시 직접 연산 폴백). 업종별로 캐시 키를 분리한다."""
     if redis_client is None:
-        return _compute_metrics(db)
+        return _compute_metrics(db, category_name)
+    cache_key = _CACHE_KEY if category_name is None else f"{_CACHE_KEY}:category:{category_name}"
     try:
-        cached = redis_client.get(_CACHE_KEY)
+        cached = redis_client.get(cache_key)
         if cached is not None:
             return json.loads(cached)
     except (RedisError, ValueError):
         # RedisError=장애, ValueError(JSONDecodeError 포함)=캐시 손상. 둘 다 직접 연산 폴백.
-        return _compute_metrics(db)
+        return _compute_metrics(db, category_name)
 
-    metrics = _compute_metrics(db)
+    metrics = _compute_metrics(db, category_name)
     try:
-        redis_client.setex(_CACHE_KEY, _CACHE_TTL, json.dumps(metrics, ensure_ascii=False))
+        redis_client.setex(cache_key, _CACHE_TTL, json.dumps(metrics, ensure_ascii=False))
     except RedisError:
         pass
     return metrics
@@ -140,12 +176,17 @@ def get_ranking(
     scope: str = "seoul",
     gu_name: str | None = None,
     type_name: str | None = None,
+    category_name: str | None = None,
     sort: str = "score",
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict]:
-    """B 엔드포인트용: scope 모집단을 sort 기준으로 순위 매겨 페이지네이션한 리스트."""
-    metrics = _metrics_cached(db, redis_client)
+    """B 엔드포인트용: scope 모집단을 sort 기준으로 순위 매겨 페이지네이션한 리스트.
+
+    category_name을 주면 전 업종 평균이 아니라 그 업종 점수 기준으로 재정렬한다
+    (해당 업종 데이터가 없는 상권은 제외).
+    """
+    metrics = _metrics_cached(db, redis_client, category_name)
     ranked = _ranked(_population(metrics, scope, gu_name, type_name), sort)
     if offset:
         ranked = ranked[offset:]
