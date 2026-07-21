@@ -44,7 +44,6 @@
 <hr>
 
 ![Landing](./imgs/landing_page.gif)
-CommercialRadar에 처음 들어오면 보이는 화면입니다. 서비스가 어떤 문제를 풀고 어떤 기능을 제공하는지 한눈에 보여줍니다.
 <br><br>
 
 ### 지역분석
