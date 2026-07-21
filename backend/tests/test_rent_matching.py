@@ -4,6 +4,7 @@
 """
 
 from app.ingest.transformers import rent_transformer as rt
+from app.ingest.loaders import resolver
 
 
 # ── 트라이그램 유사도 ─────────────────────────────────────────────────────────
@@ -135,3 +136,23 @@ def test_is_terminal_non_target_sido_false():
 
 def test_is_terminal_unknown_sido_false():
     assert rt.is_terminal("해외>어딘가>거기", {"11"}) is False
+
+
+# ── 상권명 시도 버킷팅 ────────────────────────────────────────────────────────
+
+def test_bucket_names_by_sido_groups_by_sido():
+    rows = [("중앙동", 1, "11010"), ("중앙동", 2, "26010"), ("명동", 3, "11020")]
+    result = resolver.bucket_names_by_sido(rows)
+    assert result == {"11": {"중앙동": [1], "명동": [3]}, "26": {"중앙동": [2]}}
+
+
+def test_bucket_names_by_sido_skips_null_or_short_signgu():
+    rows = [("명동", 1, None), ("강남", 2, "1"), ("역삼", 3, "11680")]
+    result = resolver.bucket_names_by_sido(rows)
+    assert result == {"11": {"역삼": [3]}}
+
+
+def test_bucket_names_by_sido_same_name_multiple_ids_in_sido():
+    rows = [("먹자골목", 1, "11110"), ("먹자골목", 2, "11140")]
+    result = resolver.bucket_names_by_sido(rows)
+    assert result == {"11": {"먹자골목": [1, 2]}}
