@@ -299,7 +299,8 @@ def transform_record(
         raw: R-ONE API raw row dict.
         floor_type: 상가유형 ("소규모" / "중대형" / "집합").
         min_wrttime: 백필 시작 기준시점 "YYYYQQ" (이 값 이상만 처리, 예: "202101").
-        name_to_ids: {district_name: [id, ...]} — load_district_name_map(db) 결과.
+        name_to_ids: {시도코드: {district_name: [id, ...]}} — load_district_name_map(db) 결과.
+                     transform은 CLS_FULLNM 시도로 해당 버킷만 골라 매칭한다.
         code_to_id: {external_code: id} — load_trdar_map(db) 결과 (MANUAL_MAP용).
 
     Returns:
@@ -325,12 +326,14 @@ def transform_record(
 
     year_quarter = wrttime_to_year_quarter(parsed.wrttime_idtfr_id)
 
-    # 서울 상권 이름 매칭
-    matched_ids = match_district_ids(parsed.cls_nm, name_to_ids, code_to_id)
+    # 시도로 후보를 좁힌 뒤 이름 매칭 (동명이지 충돌 차단)
+    sido_code = extract_sido_code(parsed.cls_fullnm)
+    scoped_names = name_to_ids.get(sido_code, {})
+    matched_ids = match_district_ids(parsed.cls_nm, scoped_names, code_to_id)
     if not matched_ids:
         logger.debug(
-            "부동산원 상권 '%s' (FULLNM=%s, floor_type=%s) 서울 상권 미매칭, 스킵",
-            parsed.cls_nm, parsed.cls_fullnm, floor_type,
+            "부동산원 상권 '%s' (FULLNM=%s, 시도=%s, floor_type=%s) 미매칭, 스킵",
+            parsed.cls_nm, parsed.cls_fullnm, sido_code, floor_type,
         )
         return []
 
