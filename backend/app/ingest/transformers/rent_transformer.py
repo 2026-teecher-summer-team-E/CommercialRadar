@@ -285,7 +285,7 @@ def transform_record(
     raw: dict,
     floor_type: str,
     min_wrttime: str,
-    name_to_ids: dict[str, list[int]],
+    name_to_ids: dict[str, dict[str, list[int]]],
     code_to_id: dict[str, int],
 ) -> list[dict]:
     """raw row 1건 → upsert용 dict 목록 반환.

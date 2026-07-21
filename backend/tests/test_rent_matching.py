@@ -177,7 +177,7 @@ def test_transform_scopes_by_sido_isolates_homonym():
 
 
 def test_transform_no_cross_sido_match():
-    # 남포동은 부산(26)에만 있음 → 서울 raw로는 매칭 없음
+    # 서울 raw이지만 남포동은 서울(11) 버킷에 없음(부산 26에만 있음) → 시도 스코프로 차단, 미매칭
     name_to_ids = {"26": {"남포동": [9]}}
     rows = rt.transform_record(
         _rent_raw("남포동", "서울>도심>남포동"), "소규모", "202601", name_to_ids, {}
