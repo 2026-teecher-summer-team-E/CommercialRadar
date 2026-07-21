@@ -48,6 +48,9 @@ def get_district_ranking(
     scope: str = Query("seoul", pattern="^(seoul|gu|type)$", description="순위 모집단"),
     gu_name: str | None = Query(None, description="scope=gu일 때 필수"),
     type_name: str | None = Query(None, description="scope=type일 때 필수"),
+    category_name: str | None = Query(
+        None, description="업종명(business_category.category_name). 주면 전 업종 평균 대신 그 업종 점수로 재정렬"
+    ),
     sort: str = Query("score", pattern="^(score|survival|population)$"),
     limit: int | None = Query(None, ge=1, le=2000),
     offset: int = Query(0, ge=0),
@@ -61,7 +64,7 @@ def get_district_ranking(
         raise HTTPException(status_code=400, detail="scope=type은 type_name이 필요합니다.")
     return ranking_service.get_ranking(
         db, redis_client, scope=scope, gu_name=gu_name, type_name=type_name,
-        sort=sort, limit=limit, offset=offset,
+        category_name=category_name, sort=sort, limit=limit, offset=offset,
     )
 
 
