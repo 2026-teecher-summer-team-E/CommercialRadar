@@ -4,6 +4,7 @@
 """
 
 from app.ingest.transformers import rent_transformer as rt
+from app.ingest.loaders import resolver
 
 
 # ── 트라이그램 유사도 ─────────────────────────────────────────────────────────
@@ -93,3 +94,104 @@ def test_fuzzy_not_triggered_when_substring_matches():
     ids = rt.match_district_ids("명동", name_to_ids, {})
     assert set(ids) == {1, 2}
     assert 3 not in ids
+
+
+# ── 시도 코드 추출 ────────────────────────────────────────────────────────────
+
+def test_extract_sido_code_seoul():
+    assert rt.extract_sido_code("서울>도심>명동") == "11"
+
+
+def test_extract_sido_code_busan():
+    assert rt.extract_sido_code("부산>중부>남포동") == "26"
+
+
+def test_extract_sido_code_unknown_returns_none():
+    assert rt.extract_sido_code("해외>어딘가>거기") is None
+
+
+def test_extract_sido_code_empty_returns_none():
+    assert rt.extract_sido_code("") is None
+
+
+# ── is_terminal (시도 필터 + 말단 판별) ───────────────────────────────────────
+
+def test_is_terminal_seoul_true():
+    assert rt.is_terminal("서울>도심>명동", {"11"}) is True
+
+
+def test_is_terminal_region_aggregate_false():
+    # 권역 집계(2세그먼트)는 말단 아님
+    assert rt.is_terminal("서울>도심", {"11"}) is False
+
+
+def test_is_terminal_sido_aggregate_false():
+    assert rt.is_terminal("서울", {"11"}) is False
+
+
+def test_is_terminal_non_target_sido_false():
+    # 부산은 대상 시도(11)가 아니므로 False
+    assert rt.is_terminal("부산>중부>남포동", {"11"}) is False
+
+
+def test_is_terminal_unknown_sido_false():
+    assert rt.is_terminal("해외>어딘가>거기", {"11"}) is False
+
+
+# ── 상권명 시도 버킷팅 ────────────────────────────────────────────────────────
+
+def test_bucket_names_by_sido_groups_by_sido():
+    rows = [("중앙동", 1, "11010"), ("중앙동", 2, "26010"), ("명동", 3, "11020")]
+    result = resolver.bucket_names_by_sido(rows)
+    assert result == {"11": {"중앙동": [1], "명동": [3]}, "26": {"중앙동": [2]}}
+
+
+def test_bucket_names_by_sido_skips_null_or_short_signgu():
+    rows = [("명동", 1, None), ("강남", 2, "1"), ("역삼", 3, "11680")]
+    result = resolver.bucket_names_by_sido(rows)
+    assert result == {"11": {"역삼": [3]}}
+
+
+def test_bucket_names_by_sido_same_name_multiple_ids_in_sido():
+    rows = [("먹자골목", 1, "11110"), ("먹자골목", 2, "11140")]
+    result = resolver.bucket_names_by_sido(rows)
+    assert result == {"11": {"먹자골목": [1, 2]}}
+
+
+# ── transform_record 시도 스코프 ─────────────────────────────────────────────
+
+def _rent_raw(cls_nm, cls_fullnm, wrttime="202601", val=90.0):
+    return {
+        "CLS_NM": cls_nm, "CLS_FULLNM": cls_fullnm, "ITM_NM": "임대료",
+        "DTA_VAL": val, "WRTTIME_IDTFR_ID": wrttime,
+    }
+
+
+def test_transform_scopes_by_sido_isolates_homonym():
+    # 중앙동이 서울(11)·부산(26) 둘 다 있어도, 서울 raw는 서울 id만 매칭
+    name_to_ids = {"11": {"중앙동": [1]}, "26": {"중앙동": [2]}}
+    rows = rt.transform_record(
+        _rent_raw("중앙동", "서울>도심>중앙동"), "소규모", "202601", name_to_ids, {}
+    )
+    assert [r["commercial_district_id"] for r in rows] == [1]
+
+
+def test_transform_no_cross_sido_match():
+    # 서울 raw이지만 남포동은 서울(11) 버킷에 없음(부산 26에만 있음) → 시도 스코프로 차단, 미매칭
+    name_to_ids = {"26": {"남포동": [9]}}
+    rows = rt.transform_record(
+        _rent_raw("남포동", "서울>도심>남포동"), "소규모", "202601", name_to_ids, {}
+    )
+    assert rows == []
+
+
+def test_transform_matches_within_sido():
+    # 정상: 서울 상권 이름 매칭 (완전일치)
+    name_to_ids = {"11": {"명동": [5]}}
+    rows = rt.transform_record(
+        _rent_raw("명동", "서울>도심>명동"), "소규모", "202601", name_to_ids, {}
+    )
+    assert len(rows) == 1
+    assert rows[0]["commercial_district_id"] == 5
+    assert rows[0]["floor_type"] == "소규모"
+    assert rows[0]["year_quarter"] == "2026-Q1"
