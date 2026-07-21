@@ -156,3 +156,42 @@ def test_bucket_names_by_sido_same_name_multiple_ids_in_sido():
     rows = [("먹자골목", 1, "11110"), ("먹자골목", 2, "11140")]
     result = resolver.bucket_names_by_sido(rows)
     assert result == {"11": {"먹자골목": [1, 2]}}
+
+
+# ── transform_record 시도 스코프 ─────────────────────────────────────────────
+
+def _rent_raw(cls_nm, cls_fullnm, wrttime="202601", val=90.0):
+    return {
+        "CLS_NM": cls_nm, "CLS_FULLNM": cls_fullnm, "ITM_NM": "임대료",
+        "DTA_VAL": val, "WRTTIME_IDTFR_ID": wrttime,
+    }
+
+
+def test_transform_scopes_by_sido_isolates_homonym():
+    # 중앙동이 서울(11)·부산(26) 둘 다 있어도, 서울 raw는 서울 id만 매칭
+    name_to_ids = {"11": {"중앙동": [1]}, "26": {"중앙동": [2]}}
+    rows = rt.transform_record(
+        _rent_raw("중앙동", "서울>도심>중앙동"), "소규모", "202601", name_to_ids, {}
+    )
+    assert [r["commercial_district_id"] for r in rows] == [1]
+
+
+def test_transform_no_cross_sido_match():
+    # 남포동은 부산(26)에만 있음 → 서울 raw로는 매칭 없음
+    name_to_ids = {"26": {"남포동": [9]}}
+    rows = rt.transform_record(
+        _rent_raw("남포동", "서울>도심>남포동"), "소규모", "202601", name_to_ids, {}
+    )
+    assert rows == []
+
+
+def test_transform_matches_within_sido():
+    # 정상: 서울 상권 이름 매칭 (완전일치)
+    name_to_ids = {"11": {"명동": [5]}}
+    rows = rt.transform_record(
+        _rent_raw("명동", "서울>도심>명동"), "소규모", "202601", name_to_ids, {}
+    )
+    assert len(rows) == 1
+    assert rows[0]["commercial_district_id"] == 5
+    assert rows[0]["floor_type"] == "소규모"
+    assert rows[0]["year_quarter"] == "2026-Q1"
