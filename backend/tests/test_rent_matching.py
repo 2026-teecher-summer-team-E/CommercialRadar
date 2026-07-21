@@ -93,3 +93,21 @@ def test_fuzzy_not_triggered_when_substring_matches():
     ids = rt.match_district_ids("명동", name_to_ids, {})
     assert set(ids) == {1, 2}
     assert 3 not in ids
+
+
+# ── 시도 코드 추출 ────────────────────────────────────────────────────────────
+
+def test_extract_sido_code_seoul():
+    assert rt.extract_sido_code("서울>도심>명동") == "11"
+
+
+def test_extract_sido_code_busan():
+    assert rt.extract_sido_code("부산>중부>남포동") == "26"
+
+
+def test_extract_sido_code_unknown_returns_none():
+    assert rt.extract_sido_code("해외>어딘가>거기") is None
+
+
+def test_extract_sido_code_empty_returns_none():
+    assert rt.extract_sido_code("") is None
