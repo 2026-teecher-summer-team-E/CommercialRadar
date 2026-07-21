@@ -111,3 +111,27 @@ def test_extract_sido_code_unknown_returns_none():
 
 def test_extract_sido_code_empty_returns_none():
     assert rt.extract_sido_code("") is None
+
+
+# ── is_terminal (시도 필터 + 말단 판별) ───────────────────────────────────────
+
+def test_is_terminal_seoul_true():
+    assert rt.is_terminal("서울>도심>명동", {"11"}) is True
+
+
+def test_is_terminal_region_aggregate_false():
+    # 권역 집계(2세그먼트)는 말단 아님
+    assert rt.is_terminal("서울>도심", {"11"}) is False
+
+
+def test_is_terminal_sido_aggregate_false():
+    assert rt.is_terminal("서울", {"11"}) is False
+
+
+def test_is_terminal_non_target_sido_false():
+    # 부산은 대상 시도(11)가 아니므로 False
+    assert rt.is_terminal("부산>중부>남포동", {"11"}) is False
+
+
+def test_is_terminal_unknown_sido_false():
+    assert rt.is_terminal("해외>어딘가>거기", {"11"}) is False

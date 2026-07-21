@@ -114,18 +114,22 @@ class RentRowIn(BaseModel):
 # 순수 변환 함수
 # ──────────────────────────────────────────────────────────────────────────────
 
-def is_seoul_terminal(cls_fullnm: str) -> bool:
-    """서울 말단 상권 여부를 반환한다.
+# 현재 처리 대상 시도 코드. 확장 시 여기에 시도 코드를 추가한다(예: {"11", "26"}).
+TARGET_SIDO_CODES: set[str] = {"11"}  # 서울
 
-    조건: CLS_FULLNM이 "서울"로 시작하고 ">" 구분 세그먼트가 3개 이상.
+
+def is_terminal(cls_fullnm: str, target_sido_codes: set[str]) -> bool:
+    """대상 시도의 말단 상권 여부를 반환한다.
+
+    조건: CLS_FULLNM 첫 세그먼트의 시도 코드가 target_sido_codes에 있고,
+    ">" 구분 세그먼트가 3개 이상(시도>권역>상권).
     예:
-      "서울>도심>명동"     → True  (서울>권역>상권)
-      "서울>도심"          → False (권역 집계, 스킵)
-      "서울"               → False (시도 집계, 스킵)
-      "서울>기타"          → False (기타 권역 집계, 스킵)
-      "광주>금남로/충장로" → False (서울 아님)
+      is_terminal("서울>도심>명동", {"11"})   → True
+      is_terminal("서울>도심", {"11"})        → False (권역 집계)
+      is_terminal("부산>중부>남포동", {"11"}) → False (대상 시도 아님)
     """
-    if not cls_fullnm.startswith("서울"):
+    sido = extract_sido_code(cls_fullnm)
+    if sido is None or sido not in target_sido_codes:
         return False
     return len(cls_fullnm.split(">")) >= 3
 
@@ -311,8 +315,8 @@ def transform_record(
     if parsed.wrttime_idtfr_id < min_wrttime:
         return []
 
-    # 서울 말단 상권만 처리
-    if not is_seoul_terminal(parsed.cls_fullnm):
+    # 대상 시도의 말단 상권만 처리
+    if not is_terminal(parsed.cls_fullnm, TARGET_SIDO_CODES):
         return []
 
     # 임대료 항목만 처리 (ITM_NM에 다른 항목이 있을 경우 대비)
