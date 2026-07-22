@@ -50,6 +50,13 @@ TRIGRAM_THRESHOLD = 0.25
 # 실측 근거: 숙명여대→숙대입구 309m(Δ67 통과), 테헤란로 270m(Δ29 거부, 애매).
 GEO_MAX_DISTANCE_M = 400.0
 GEO_MARGIN_M = 50.0
+
+# fuzzy 후보 블로킹 임계값. 트라이그램이 이 값 이상인 상권을 "이름이 관련 있는 후보"로
+# 모으고(recall), 그중 실제 매칭은 좌표 게이트가 정한다(precision). TRIGRAM_THRESHOLD(0.25)보다
+# 낮게 두어 그물을 넓힌다 — 좌표가 최종 심판이므로 안전하다.
+# 실측 근거: 숙명여대↔숙대입구=0.11(트라이그램 1위 성신여대도 0.11이라 이름만으론 못 가림),
+# 좌표로 숙대입구(308m)를 확정. 좌표 없으면 기존처럼 TRIGRAM_THRESHOLD로 폴백.
+FUZZY_CANDIDATE_FLOOR = 0.10
 # 복합명 토큰 최소 길이. 1자 토큰("역" 등)은 과매칭이라 2자 이상만 쓴다.
 MIN_TOKEN_LEN = 2
 # 복합명 구분자: "신촌/이대", "독산,시흥", "금남로·충장로" 등.
@@ -227,14 +234,12 @@ def _fuzzy_match_ids(
     5a) 토큰 분할 접두어 매칭: 복합명("신촌/이대")을 토큰으로 쪼개, 서울 상권명이
         그 토큰으로 "시작"하면 매칭한다(예: "신촌"→"신촌역", "합정"→"합정역").
         접두어로 제한해 "이대"가 "어린이대공원역"에 걸리는 과매칭을 막는다.
-    5b) 토큰 매칭도 없으면 트라이그램 최고 유사도 상권을 후보로 삼아,
-        후보가 유일하고 임계값(TRIGRAM_THRESHOLD) 이상이면 매칭한다(예: "역삼대로"→"역삼역").
-        서로 다른 상권이 최고 점수로 동점이면, 좌표가 주어지면 최근접으로 해소하고(확신
-        게이트 통과 시), 없으면 스킵한다.
-    5c) 이름으로 전혀 못 붙는(무신호) 경우, 좌표가 있으면 버킷 전체에서 최근접 상권을
-        확신 게이트 하에 구제한다(예: "숙명여대"→"숙대입구"). 좌표 없거나 게이트 미통과면 스킵.
-
-    reb_coord / id_to_coord 가 None이면 5b 동점은 스킵, 5c는 비활성 — 기존 동작과 동일.
+    5b) 토큰 매칭도 없으면 "트라이그램 후보 블로킹 → 좌표 확정":
+        트라이그램 ≥ FUZZY_CANDIDATE_FLOOR 인 상권을 이름-관련 후보로 모으고(recall),
+        좌표가 있으면 그 후보들 중 최근접을 확신 게이트로 확정한다(precision).
+        예) "숙명여대" → 후보 {숙대입구·성신여대…}(둘 다 0.11) 중 좌표로 숙대입구(308m) 확정.
+        좌표가 없으면(best-effort) 기존 동작으로 폴백 — 최고점이 TRIGRAM_THRESHOLD 이상이고
+        동점이 아니면 그 상권을 매칭(예: "역삼대로"→"역삼역"), 동점/미달이면 스킵.
     """
     seen: set[int] = set()
     result_ids: list[int] = []
@@ -254,38 +259,33 @@ def _fuzzy_match_ids(
     if result_ids:
         return result_ids
 
-    # 5b. 트라이그램 최고 유사도 매칭 (도로명·표기 변형)
-    best_score = 0.0
-    tied_ids: list[list[int]] = []  # 최고 점수 후보들의 ids (복수면 동점)
+    # 5b. 트라이그램 후보 블로킹 → 좌표 확정
+    #   블로킹: 이름이 어느 정도 닮은 상권만 후보로(FUZZY_CANDIDATE_FLOOR 이상). 좌표가 엉뚱한
+    #   상권까지 붙는 걸 막는 바닥 조건이다.
+    candidates: list[tuple[str, list[int], float]] = []
     for district_name, ids in name_to_ids.items():
         score = trigram_similarity(reb_norm, district_name)
-        if score > best_score:
-            best_score, tied_ids = score, [ids]
-        elif score == best_score and score > 0:
-            tied_ids.append(ids)
-
-    if best_score >= TRIGRAM_THRESHOLD and tied_ids:
-        if len(tied_ids) == 1:
-            _collect(tied_ids[0])
-            return result_ids
-        # 동점 → 좌표로 해소 (게이트 통과 시에만, 아니면 현행대로 스킵)
-        if reb_coord and id_to_coord:
-            tied_coords = {
-                id_: id_to_coord[id_]
-                for ids in tied_ids for id_ in ids if id_ in id_to_coord
-            }
-            picked = _nearest_within_gate(reb_coord, tied_coords)
-            if picked is not None:
-                _collect([picked])
+        if score >= FUZZY_CANDIDATE_FLOOR:
+            candidates.append((district_name, ids, score))
+    if not candidates:
         return result_ids
 
-    # 5c. 지리 구제 — 이름 무신호. 버킷 전체에서 최근접을 확신 게이트 하에 매칭.
     if reb_coord and id_to_coord:
-        bucket_ids = {id_ for ids in name_to_ids.values() for id_ in ids}
-        candidates = {id_: c for id_, c in id_to_coord.items() if id_ in bucket_ids}
-        picked = _nearest_within_gate(reb_coord, candidates)
+        # 좌표 확정: 후보 상권들의 centroid 중 최근접을 확신 게이트로.
+        cand_coords = {
+            id_: id_to_coord[id_]
+            for _, ids, _ in candidates for id_ in ids if id_ in id_to_coord
+        }
+        picked = _nearest_within_gate(reb_coord, cand_coords)
         if picked is not None:
             _collect([picked])
+        return result_ids
+
+    # 좌표 없음(best-effort) → 기존 트라이그램 단독 동작: 최고점 ≥ 임계값 & 동점 아니면 채택.
+    best_score = max(c[2] for c in candidates)
+    top = [c for c in candidates if c[2] == best_score]
+    if best_score >= TRIGRAM_THRESHOLD and len(top) == 1:
+        _collect(top[0][1])
 
     return result_ids
 
@@ -307,11 +307,12 @@ def match_district_ids(
       4) 서울 이름 ⊆ 부동산원 이름, 최소 3자 (예: "신촌" ⊆ "신촌/이대").
       5) fuzzy 폴백 (2~4 모두 실패 시):
          5a) 토큰 분할 접두어 매칭 — 복합명 "신촌/이대" → "신촌역", "이대역".
-         5b) 트라이그램 유사도 매칭 — 도로명 "역삼대로" → "역삼역"(동점은 좌표로 해소).
-         5c) 지리 구제 — 이름 무신호 시 좌표 최근접(확신 게이트) — "숙명여대" → "숙대입구".
+         5b) 트라이그램 후보 블로킹 → 좌표 확정 — 이름 닮은 후보(≥FUZZY_CANDIDATE_FLOOR)
+             중 좌표 최근접을 확신 게이트로 확정("숙명여대"→"숙대입구"). 좌표 없으면
+             트라이그램 단독 폴백("역삼대로"→"역삼역").
 
-    reb_coord/id_to_coord(선택): R-ONE 상권 좌표와 {id: centroid} 매핑. 주면 5b 동점 해소·
-    5c 구제가 활성화되고, None이면 이름 매칭만으로 동작(기존과 동일).
+    reb_coord/id_to_coord(선택): R-ONE 상권 좌표와 {id: centroid} 매핑. 주면 5b가 좌표
+    확정으로 동작하고, None이면 트라이그램 단독(기존과 동일)으로 폴백한다.
 
     Args:
         reb_name: 부동산원 CLS_NM (예: "명동").
