@@ -64,3 +64,25 @@ class ReportService:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
 
         return report, content
+
+    @staticmethod
+    def delete(db: Session, user_id: int, report_id: int) -> None:
+        """본인 소유 리포트와 연관 콘텐츠를 소프트 삭제한다 (단일 트랜잭션)."""
+        report = (
+            db.query(Report)
+            .filter(
+                Report.id == report_id,
+                Report.user_id == user_id,
+                Report.is_deleted.is_(False),
+            )
+            .first()
+        )
+        if not report:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Report not found")
+
+        report.is_deleted = True
+        db.query(ReportContent).filter(
+            ReportContent.report_id == report.id,
+            ReportContent.is_deleted.is_(False),
+        ).update({ReportContent.is_deleted: True}, synchronize_session=False)
+        db.commit()
