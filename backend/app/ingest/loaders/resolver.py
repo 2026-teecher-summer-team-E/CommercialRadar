@@ -8,8 +8,10 @@
 주의: seoul_commercial job이 먼저 완료돼 있어야 매핑이 올바르다.
 """
 
+import json
 import logging
 from collections import defaultdict
+from pathlib import Path
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -18,6 +20,9 @@ from app.models.commercial_district import CommercialDistrict
 from app.models.population_timeseries import PopulationTimeseries
 
 logger = logging.getLogger(__name__)
+
+# 오프라인 지오코딩 결과(카카오) — scripts/geocode_reb.py가 생성. R-ONE명 → (lat,lng).
+_REB_COORDS_PATH = Path(__file__).resolve().parent.parent / "data" / "reb_coords.json"
 
 # 화제성(buzz) 대상 상권 유형 — 검색 가능한 지명을 가진 유형만.
 # 골목상권은 상권명이 시설명/출구번호(예: '곰달래도서관', '충정로역 7번')라 검색어로 부적절.
@@ -127,6 +132,54 @@ def load_district_name_map(db: Session) -> dict[str, dict[str, list[int]]]:
         len(mapping), sum(len(v) for v in mapping.values()),
     )
     return mapping
+
+
+def load_district_geo_map(db: Session) -> dict[str, dict[int, tuple[float, float]]]:
+    """commercial_district에서 {시도코드: {id: (lat, lng)}} centroid 매핑을 로드한다.
+
+    임대료 이름 매칭이 실패/동점일 때의 좌표 보완(rent_transformer 5b 동점 해소 · 5c 지리
+    구제)에 사용한다. geometry(SRID 4326)의 ST_Centroid를 (위도, 경도)로 반환하며 geometry가
+    NULL이거나 signgu_code가 없는/짧은 상권은 제외한다. load_district_name_map과 동일한
+    시도(signgu_code 앞 2자리) 버킷 구조다.
+    """
+    rows = db.execute(
+        select(
+            CommercialDistrict.signgu_code,
+            CommercialDistrict.id,
+            func.ST_Y(func.ST_Centroid(CommercialDistrict.geometry)),
+            func.ST_X(func.ST_Centroid(CommercialDistrict.geometry)),
+        ).where(CommercialDistrict.geometry.isnot(None))
+    ).all()
+    mapping: dict[str, dict[int, tuple[float, float]]] = defaultdict(dict)
+    for signgu_code, id_, lat, lng in rows:
+        if not signgu_code or len(signgu_code) < 2 or lat is None or lng is None:
+            continue
+        mapping[signgu_code[:2]][id_] = (float(lat), float(lng))
+    result = {k: dict(v) for k, v in mapping.items()}
+    logger.info(
+        "상권 centroid 매핑 로드: %d개 시도, 총 %d개 상권",
+        len(result), sum(len(v) for v in result.values()),
+    )
+    return result
+
+
+def load_reb_coords() -> dict[str, tuple[float, float]]:
+    """R-ONE 상권명 → (lat, lng) 정적 매핑 로드 (오프라인 지오코딩 결과, best-effort).
+
+    scripts/geocode_reb.py가 카카오로 생성한 reb_coords.json을 읽는다. 키는 normalize_name이
+    적용된 R-ONE 상권명. 파일이 없거나 파싱 실패면 빈 dict를 반환해 좌표 보완을 자동
+    비활성화한다(이름 매칭만으로 동작 → 회귀 없음).
+    """
+    try:
+        raw = json.loads(_REB_COORDS_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning("reb_coords.json 로드 실패, 좌표 보완 비활성화: %s", exc)
+        return {}
+    return {
+        name: (float(v[0]), float(v[1]))
+        for name, v in raw.items()
+        if isinstance(v, (list, tuple)) and len(v) == 2
+    }
 
 
 def load_adstrd_map(db: Session) -> dict[str, list[int]]:

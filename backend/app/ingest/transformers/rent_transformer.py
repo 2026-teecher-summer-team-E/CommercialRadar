@@ -43,6 +43,20 @@ logger = logging.getLogger(__name__)
 # 트라이그램 유사도 임계값. pg_trgm 기본값(0.3)은 긴 영문 기준이라, 3~5자 한글
 # 상권명에는 높다(실측: 강남대로↔강남역 = 0.29). 실측으로 0.25를 채택한다.
 TRIGRAM_THRESHOLD = 0.25
+
+# ── 지리(좌표) 보완 매칭 튜닝 상수 ────────────────────────────────────────────
+# 이름 매칭이 실패/동점일 때만 좌표를 쓴다(성공 매칭엔 영향 없음). 확신 게이트:
+#   최근접 centroid가 GEO_MAX_DISTANCE_M 이내 AND 차근접보다 GEO_MARGIN_M 이상 가까움.
+# 실측 근거: 숙명여대→숙대입구 309m(Δ67 통과), 테헤란로 270m(Δ29 거부, 애매).
+GEO_MAX_DISTANCE_M = 400.0
+GEO_MARGIN_M = 50.0
+
+# fuzzy 후보 블로킹 임계값. 트라이그램이 이 값 이상인 상권을 "이름이 관련 있는 후보"로
+# 모으고(recall), 그중 실제 매칭은 좌표 게이트가 정한다(precision). TRIGRAM_THRESHOLD(0.25)보다
+# 낮게 두어 그물을 넓힌다 — 좌표가 최종 심판이므로 안전하다.
+# 실측 근거: 숙명여대↔숙대입구=0.11(트라이그램 1위 성신여대도 0.11이라 이름만으론 못 가림),
+# 좌표로 숙대입구(308m)를 확정. 좌표 없으면 기존처럼 TRIGRAM_THRESHOLD로 폴백.
+FUZZY_CANDIDATE_FLOOR = 0.10
 # 복합명 토큰 최소 길이. 1자 토큰("역" 등)은 과매칭이라 2자 이상만 쓴다.
 MIN_TOKEN_LEN = 2
 # 복합명 구분자: "신촌/이대", "독산,시흥", "금남로·충장로" 등.
@@ -84,11 +98,12 @@ MANUAL_MAP: dict[str, list[str]] = {
     # 도로명 상권 — 서울시 상권분석서비스에 동일 이름 없음.
     # 강남대로는 강남역(3120189) 상권이 그 도로 위에 있어 대표 매핑한다.
     "강남대로": ["3120189"],  # → 강남역
-    # 트라이그램·토큰 매칭으로도 신뢰할 만한 후보가 없어 의도적으로 스킵한다.
-    # (실측 최고 유사도: 도산대로 0.20, 테헤란로 0.06, 숙명여대 0.11 < 임계값)
+    # 트라이그램·토큰 매칭으로 신뢰할 후보가 없어 의도적으로 스킵한다.
+    # (실측 최고 유사도: 도산대로 0.20, 테헤란로 0.06 < 임계값)
     "도산대로": [],
     "테헤란로": [],
-    "숙명여대": [],
+    # 숙명여대는 MANUAL에서 제외 → 지리 구제 티어(5c)가 '숙대입구'(centroid 309m)로
+    # 자동 매칭한다. 이름 유사도 0.11로는 못 붙지만 좌표 확신 게이트를 통과한다.
     # 복합명 상권(동교/연남·신촌/이대·홍대/합정·독산/시흥·잠실/송파)은
     # MANUAL_MAP에서 뺐다 → 아래 fuzzy 매칭의 토큰 분할 티어가 자동 처리한다.
 }
@@ -171,6 +186,38 @@ def trigram_similarity(a: str, b: str) -> float:
     return inter / len(ta | tb)
 
 
+def _haversine_m(a: tuple[float, float], b: tuple[float, float]) -> float:
+    """두 (lat, lng) 지점 간 대원 거리(미터). 외부 의존성 없는 순수 함수."""
+    from math import asin, cos, radians, sin, sqrt
+
+    lat1, lng1 = a
+    lat2, lng2 = b
+    dlat = radians(lat2 - lat1)
+    dlng = radians(lng2 - lng1)
+    h = sin(dlat / 2) ** 2 + cos(radians(lat1)) * cos(radians(lat2)) * sin(dlng / 2) ** 2
+    return 2 * 6_371_000.0 * asin(sqrt(h))  # 지구 반경 6,371km
+
+
+def _nearest_within_gate(
+    reb_coord: tuple[float, float] | None,
+    candidates: dict[int, tuple[float, float]],
+) -> int | None:
+    """후보 {id: (lat,lng)} 중 reb_coord 최근접 id를 확신 게이트 하에 반환.
+
+    게이트: 최근접 거리 ≤ GEO_MAX_DISTANCE_M 이고 차근접과의 간격 ≥ GEO_MARGIN_M.
+    (후보 1개면 간격 조건 자동 충족.) 못 넘으면 None(모호 → 매칭 안 함).
+    """
+    if not reb_coord or not candidates:
+        return None
+    ranked_ids = sorted((_haversine_m(reb_coord, c), id_) for id_, c in candidates.items())
+    best_dist, best_id = ranked_ids[0]
+    if best_dist > GEO_MAX_DISTANCE_M:
+        return None
+    if len(ranked_ids) >= 2 and (ranked_ids[1][0] - best_dist) < GEO_MARGIN_M:
+        return None  # 최근접이 애매하게 붙어 있음 → 신뢰 불가
+    return best_id
+
+
 def _tokens(reb_name: str) -> list[str]:
     """복합명을 구분자로 쪼갠 토큰(2자 이상). 예: "신촌/이대" → ["신촌", "이대"]."""
     return [t for t in _TOKEN_SEP.split(normalize_name(reb_name)) if len(t) >= MIN_TOKEN_LEN]
@@ -179,15 +226,20 @@ def _tokens(reb_name: str) -> list[str]:
 def _fuzzy_match_ids(
     reb_norm: str,
     name_to_ids: dict[str, list[int]],
+    reb_coord: tuple[float, float] | None = None,
+    id_to_coord: dict[int, tuple[float, float]] | None = None,
 ) -> list[int]:
     """정확·부분 매칭이 모두 실패했을 때의 fuzzy 폴백.
 
     5a) 토큰 분할 접두어 매칭: 복합명("신촌/이대")을 토큰으로 쪼개, 서울 상권명이
         그 토큰으로 "시작"하면 매칭한다(예: "신촌"→"신촌역", "합정"→"합정역").
         접두어로 제한해 "이대"가 "어린이대공원역"에 걸리는 과매칭을 막는다.
-    5b) 토큰 매칭도 없으면 트라이그램 최고 유사도 상권을 후보로 삼아,
-        후보가 유일하고 임계값(TRIGRAM_THRESHOLD) 이상이면 매칭한다
-        (예: "역삼대로"→"역삼역"). 서로 다른 상권이 최고 점수로 동점이면 스킵한다.
+    5b) 토큰 매칭도 없으면 "트라이그램 후보 블로킹 → 좌표 확정":
+        트라이그램 ≥ FUZZY_CANDIDATE_FLOOR 인 상권을 이름-관련 후보로 모으고(recall),
+        좌표가 있으면 그 후보들 중 최근접을 확신 게이트로 확정한다(precision).
+        예) "숙명여대" → 후보 {숙대입구·성신여대…}(둘 다 0.11) 중 좌표로 숙대입구(308m) 확정.
+        좌표가 없으면(best-effort) 기존 동작으로 폴백 — 최고점이 TRIGRAM_THRESHOLD 이상이고
+        동점이 아니면 그 상권을 매칭(예: "역삼대로"→"역삼역"), 동점/미달이면 스킵.
     """
     seen: set[int] = set()
     result_ids: list[int] = []
@@ -207,21 +259,33 @@ def _fuzzy_match_ids(
     if result_ids:
         return result_ids
 
-    # 5b. 트라이그램 최고 유사도 매칭 (도로명·표기 변형)
-    # 서로 다른 상권이 최고 점수로 동점이면 어느 쪽도 신뢰할 수 없으므로 스킵한다
-    # (동점을 모두 매칭하면 모호한 결과가 여러 상권에 잘못 적재된다).
-    best_score = 0.0
-    best_ids: list[int] | None = None
-    ambiguous = False
+    # 5b. 트라이그램 후보 블로킹 → 좌표 확정
+    #   블로킹: 이름이 어느 정도 닮은 상권만 후보로(FUZZY_CANDIDATE_FLOOR 이상). 좌표가 엉뚱한
+    #   상권까지 붙는 걸 막는 바닥 조건이다.
+    candidates: list[tuple[str, list[int], float]] = []
     for district_name, ids in name_to_ids.items():
         score = trigram_similarity(reb_norm, district_name)
-        if score > best_score:
-            best_score, best_ids = score, ids
-            ambiguous = False
-        elif score == best_score and score > 0:
-            ambiguous = True
-    if best_score >= TRIGRAM_THRESHOLD and best_ids is not None and not ambiguous:
-        _collect(best_ids)
+        if score >= FUZZY_CANDIDATE_FLOOR:
+            candidates.append((district_name, ids, score))
+    if not candidates:
+        return result_ids
+
+    if reb_coord and id_to_coord:
+        # 좌표 확정: 후보 상권들의 centroid 중 최근접을 확신 게이트로.
+        cand_coords = {
+            id_: id_to_coord[id_]
+            for _, ids, _ in candidates for id_ in ids if id_ in id_to_coord
+        }
+        picked = _nearest_within_gate(reb_coord, cand_coords)
+        if picked is not None:
+            _collect([picked])
+        return result_ids
+
+    # 좌표 없음(best-effort) → 기존 트라이그램 단독 동작: 최고점 ≥ 임계값 & 동점 아니면 채택.
+    best_score = max(c[2] for c in candidates)
+    top = [c for c in candidates if c[2] == best_score]
+    if best_score >= TRIGRAM_THRESHOLD and len(top) == 1:
+        _collect(top[0][1])
 
     return result_ids
 
@@ -230,6 +294,8 @@ def match_district_ids(
     reb_name: str,
     name_to_ids: dict[str, list[int]],
     code_to_id: dict[str, int],
+    reb_coord: tuple[float, float] | None = None,
+    id_to_coord: dict[int, tuple[float, float]] | None = None,
 ) -> list[int]:
     """부동산원 상권명 → 서울 상권 DB id 목록 반환.
 
@@ -241,7 +307,12 @@ def match_district_ids(
       4) 서울 이름 ⊆ 부동산원 이름, 최소 3자 (예: "신촌" ⊆ "신촌/이대").
       5) fuzzy 폴백 (2~4 모두 실패 시):
          5a) 토큰 분할 접두어 매칭 — 복합명 "신촌/이대" → "신촌역", "이대역".
-         5b) 트라이그램 유사도 매칭 — 도로명 "역삼대로" → "역삼역"(동점이면 스킵).
+         5b) 트라이그램 후보 블로킹 → 좌표 확정 — 이름 닮은 후보(≥FUZZY_CANDIDATE_FLOOR)
+             중 좌표 최근접을 확신 게이트로 확정("숙명여대"→"숙대입구"). 좌표 없으면
+             트라이그램 단독 폴백("역삼대로"→"역삼역").
+
+    reb_coord/id_to_coord(선택): R-ONE 상권 좌표와 {id: centroid} 매핑. 주면 5b가 좌표
+    확정으로 동작하고, None이면 트라이그램 단독(기존과 동일)으로 폴백한다.
 
     Args:
         reb_name: 부동산원 CLS_NM (예: "명동").
@@ -276,7 +347,7 @@ def match_district_ids(
 
     # 5. 정확·부분 매칭이 모두 실패했을 때만 fuzzy 폴백 (기존 매칭엔 영향 없음)
     if not result_ids:
-        return _fuzzy_match_ids(reb_norm, name_to_ids)
+        return _fuzzy_match_ids(reb_norm, name_to_ids, reb_coord, id_to_coord)
 
     return result_ids
 
@@ -287,6 +358,8 @@ def transform_record(
     min_wrttime: str,
     name_to_ids: dict[str, dict[str, list[int]]],
     code_to_id: dict[str, int],
+    reb_coords: dict[str, tuple[float, float]] | None = None,
+    geo_by_sido: dict[str, dict[int, tuple[float, float]]] | None = None,
 ) -> list[dict]:
     """raw row 1건 → upsert용 dict 목록 반환.
 
@@ -329,7 +402,12 @@ def transform_record(
     # 시도로 후보를 좁힌 뒤 이름 매칭 (동명이지 충돌 차단)
     sido_code = extract_sido_code(parsed.cls_fullnm)
     scoped_names = name_to_ids.get(sido_code, {})
-    matched_ids = match_district_ids(parsed.cls_nm, scoped_names, code_to_id)
+    # 좌표 보완(선택): R-ONE 상권 좌표 + 같은 시도 상권 centroid. 없으면 이름 매칭만.
+    reb_coord = reb_coords.get(normalize_name(parsed.cls_nm)) if reb_coords else None
+    id_to_coord = geo_by_sido.get(sido_code) if geo_by_sido else None
+    matched_ids = match_district_ids(
+        parsed.cls_nm, scoped_names, code_to_id, reb_coord, id_to_coord
+    )
     if not matched_ids:
         logger.debug(
             "부동산원 상권 '%s' (FULLNM=%s, 시도=%s, floor_type=%s) 미매칭, 스킵",

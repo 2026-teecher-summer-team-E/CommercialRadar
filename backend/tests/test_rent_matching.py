@@ -195,3 +195,101 @@ def test_transform_matches_within_sido():
     assert rows[0]["commercial_district_id"] == 5
     assert rows[0]["floor_type"] == "소규모"
     assert rows[0]["year_quarter"] == "2026-Q1"
+
+
+# ── 지리(좌표) 보완 매칭 ──────────────────────────────────────────────────────
+# 실측 좌표(카카오 지오코딩 · DB centroid). 이름 매칭 실패/동점일 때만 좌표를 쓴다.
+
+GANGNAM_STATION = (37.49757, 127.02775)  # 강남역 centroid (DB 실측)
+GANGNAM_RO = (37.49503, 127.02902)       # 강남대로 (카카오)
+SEOCHO_DAERO = (37.49007, 127.00633)     # 서초대로 (카카오)
+SEOCHO_STATION = (37.49147, 127.00859)   # 서초역 centroid (DB) — 서초대로에서 ~253m
+SEOCHO_GIL_FAR = (37.51000, 127.03000)   # 서초길(가정) — 원거리
+SOOKMYUNG = (37.54644, 126.96473)        # 숙명여대 (카카오)
+SOOKDAE = (37.54500, 126.96550)          # 숙대입구(가정) — 숙명여대에서 ~180m
+BAEMUN_FAR = (37.55500, 126.97000)       # 배문고(가정) — 원거리
+
+
+def test_haversine_known_distance():
+    # 강남역 ↔ 강남대로 실측 ≈ 304m
+    d = rt._haversine_m(GANGNAM_STATION, GANGNAM_RO)
+    assert 250 < d < 360
+
+
+def test_geo_breaks_trigram_tie():
+    # 서초대로: 서초역·서초길이 트라이그램 동점(이름만으론 스킵)이지만,
+    # 좌표를 주면 최근접(서초역)으로 해소한다.
+    name_to_ids = {"서초역": [1], "서초길": [2]}
+    ids = rt.match_district_ids(
+        "서초대로", name_to_ids, {},
+        reb_coord=SEOCHO_DAERO, id_to_coord={1: SEOCHO_STATION, 2: SEOCHO_GIL_FAR},
+    )
+    assert ids == [1]
+
+
+def test_geo_rescues_name_no_signal():
+    # 숙명여대: 이름 유사도(숙대입구 0.11)로는 못 붙지만, centroid 최근접(숙대입구)으로 구제.
+    name_to_ids = {"숙대입구": [1], "배문고등학교": [2]}
+    ids = rt.match_district_ids(
+        "숙명여대", name_to_ids, {},
+        reb_coord=SOOKMYUNG, id_to_coord={1: SOOKDAE, 2: BAEMUN_FAR},
+    )
+    assert ids == [1]
+
+
+def test_geo_rejects_ambiguous_nearest():
+    # 후보(서초역·서초길, 둘 다 0.29 ≥ FLOOR)의 최근접·차근접이 게이트(GEO_MARGIN_M) 안으로
+    # 붙어 있으면 신뢰 불가 → 스킵.
+    name_to_ids = {"서초역": [1], "서초길": [2]}
+    ids = rt.match_district_ids(
+        "서초대로", name_to_ids, {},
+        reb_coord=SEOCHO_DAERO,
+        id_to_coord={1: (37.49150, 127.00700), 2: (37.48864, 127.00700)},  # 둘 다 ~170m
+    )
+    assert ids == []
+
+
+def test_geo_rejects_too_far():
+    # 후보(역삼역, 0.29 ≥ FLOOR)가 있어도 최근접이 GEO_MAX_DISTANCE_M를 넘으면 스킵.
+    ids = rt.match_district_ids(
+        "역삼대로", {"역삼역": [1]}, {},
+        reb_coord=(37.4994, 127.0337), id_to_coord={1: (37.6, 127.1)},  # ~13km
+    )
+    assert ids == []
+
+
+def test_geo_picks_by_distance_not_trigram_rank():
+    # 숙명여대는 성신여대·숙대입구가 트라이그램 동점(0.11) — 이름만으론 못 가린다.
+    # 후보 집합을 넓게 잡고 좌표가 실제 위치(숙대입구)를 확정한다. 트라이그램 1위를 좇지 않는다.
+    name_to_ids = {"성신여대": [1], "숙대입구": [2]}
+    ids = rt.match_district_ids(
+        "숙명여대", name_to_ids, {},
+        reb_coord=SOOKMYUNG,
+        id_to_coord={1: (37.5926, 127.0163), 2: SOOKDAE},  # 성신여대 성북구(멀다), 숙대입구 근접
+    )
+    assert ids == [2]
+
+
+def test_geo_blocked_when_no_name_similarity():
+    # 이름이 전혀 안 닮으면(트라이그램 < FLOOR) 후보가 없어, 좌표가 같아도 안 붙는다(over-attach 방지).
+    ids = rt.match_district_ids(
+        "홍대입구", {"강남역": [1]}, {},
+        reb_coord=(37.4976, 127.0278), id_to_coord={1: (37.4976, 127.0278)},  # 동일 위치라도
+    )
+    assert ids == []
+
+
+def test_geo_inactive_without_coords_no_regression():
+    # 좌표 인자가 없으면 이름 무신호는 그대로 미매칭(기존 동작).
+    assert rt.match_district_ids("숙명여대", {"숙대입구": [1]}, {}) == []
+
+
+def test_transform_geo_rescue_end_to_end():
+    # transform_record 경유 지리 구제: 숙명여대 → 숙대입구.
+    name_to_ids = {"11": {"숙대입구": [1], "배문고등학교": [2]}}
+    rows = rt.transform_record(
+        _rent_raw("숙명여대", "서울>도심>숙명여대"), "소규모", "202601", name_to_ids, {},
+        reb_coords={"숙명여대": SOOKMYUNG},
+        geo_by_sido={"11": {1: SOOKDAE, 2: BAEMUN_FAR}},
+    )
+    assert [r["commercial_district_id"] for r in rows] == [1]

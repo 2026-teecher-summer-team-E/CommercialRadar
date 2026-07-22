@@ -51,6 +51,7 @@ from app.ingest.loaders import commercial_loader, population_loader, business_lo
 from app.ingest.loaders import foreign_loader, rent_loader, population_timeseries_loader
 from app.ingest.loaders.resolver import (
     load_trdar_map, load_adstrd_map, load_district_name_map, load_buzz_targets,
+    load_district_geo_map, load_reb_coords,
 )
 from app.ingest.transformers import (
     commercial_transformer,
@@ -504,6 +505,10 @@ def ingest_seoul_rent(db: Session | None = None) -> IngestionRun:
         name_to_ids = load_district_name_map(db)
         # external_code → DB id 매핑 (MANUAL_MAP external_code 변환용)
         code_to_id = load_trdar_map(db)
+        # 좌표 보완용: 상권 centroid({시도:{id:(lat,lng)}}) + R-ONE명 지오코딩({명:(lat,lng)}).
+        # 이름 매칭 실패/동점일 때만 쓰이며, 데이터 결측 시 자동 비활성화(회귀 없음).
+        geo_by_sido = load_district_geo_map(db)
+        reb_coords = load_reb_coords()
 
         all_rows: list[dict] = []
         failed = 0
@@ -523,7 +528,8 @@ def ingest_seoul_rent(db: Session | None = None) -> IngestionRun:
                 for raw in client.iter_rows():
                     fetched += 1
                     transformed = rent_transformer.transform_record(
-                        raw, floor_type, min_wrttime, name_to_ids, code_to_id
+                        raw, floor_type, min_wrttime, name_to_ids, code_to_id,
+                        reb_coords, geo_by_sido,
                     )
                     if transformed:
                         all_rows.extend(transformed)
