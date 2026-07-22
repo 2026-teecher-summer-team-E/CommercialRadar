@@ -397,3 +397,22 @@ def create_report(
     current_user: User = Depends(get_current_user),
 ):
     return ReportService.create(db, current_user.id, body)
+
+
+@router.delete(
+    "/reports/{report_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="리포트 삭제",
+    description="로그인 사용자가 본인 소유 리포트를 소프트 삭제합니다.",
+    responses={
+        401: {"description": "Authorization 헤더가 없거나 Clerk JWT가 유효하지 않은 경우"},
+        404: {"description": "리포트가 없거나 로그인 사용자의 리포트가 아닌 경우"},
+    },
+)
+def delete_report(
+    report_id: int = Path(..., description="삭제할 리포트 ID", examples=[500]),
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """본인 소유 리포트와 연관 콘텐츠를 소프트 삭제합니다."""
+    ReportService.delete(db, current_user.id, report_id)
